@@ -1,0 +1,33 @@
+training
+    training_egine (change name)
+
+utils file
+
+visualization
+
+configuration file
+
+pipeline
+    model
+        deeplabv2
+        bisenet
+    loader
+        dataset
+        transformations
+        loader
+    loss_fn
+        crossentropyloss
+    optimizer
+        adam
+    train
+        loop
+        save loss and miou
+    val
+        save loss and miou
+    visualization
+        train loss
+        train miou
+        val loss 
+        val miou
+        last val iou per class (bar chart)
+
