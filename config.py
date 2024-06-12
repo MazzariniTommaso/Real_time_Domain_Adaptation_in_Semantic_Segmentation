@@ -1,24 +1,45 @@
-# Train conf
+# Core
 EPOCHS = 50
+DEVICE = 'cuda'
+PARALLELIZE = True
+PROJECT_STEP = 'Step2_1'  # [Step2_1, Step2_2, Step3_1, Step3_2, Step4]
+VERBOSE = True
+EVAL_ITERATIONS = 100
+IGNORE_MODEL_MEASUREMENTS = False
+
+# Model
+MODEL_NAME = 'DeepLabV2'  # [DeepLabV2, BiSeNet]
+
+# Optimizer
+OPTIMIZER_NAME = 'SGD'  # [SGD, Adam]
+
+# Loss function
+LOSS_FN_NAME = 'CrossEntropyLoss'  # [CrossEntropyLoss]
+WEIGHT_DECAY = 5e-4
+MOMENTUM = 0.9
+LR = 0.001
+POWER = 0.9 # for poly_lr_scheduler 
+IGNORE_INDEX = 255
+
+# Datasets
 N_CLASSES = 19
-LR = 5e-4
-
-# Dataloader conf
-BATCH_SIZE = [2,4,8]
-NUM_WORKERS = [0,2,4,8]
-
-# Datasets size
+TRAIN_DATASET_NAME = 'CityScapes'  # [CityScapes, GTA5]
+VAL_DATASET_NAME = 'CityScapes'  # [CityScapes]
+AUGMENTED = False
+AUGMENTED_TYPE = 'transform1'  # [transform1, transform2, transform3, transform4]
+BATCH_SIZE = 4  # [2, 4, 8]
+N_WORKERS = 4  # [0, 2, 4]
 CITYSCAPES = {
     'width': 1024, 
     'height': 512
 }
-
-GTA5 = {
+GTA = {
     'width': 1280, 
     'height': 720
 }
 
 # Paths
 CITYSCAPES_PATH = 'data/Cityscapes/Cityspaces'
-GTA_PATH = 'data/GTA5'
+GTA5_PATH = 'data/GTA5'
 DEEPLABV2_PATH = 'models/deeplab_resnet_pretrained_imagenet.pth'
+CHECKPOINT_ROOT = 'checkpoints'

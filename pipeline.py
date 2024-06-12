@@ -1,14 +1,18 @@
 import numpy as np
 import torch
-from typing import Tuple, List
-from utils import fast_hist, per_class_iou, load_checkpoint, print_stats, poly_lr_scheduler, save_checkpoint
-from tqdm import tqdm
-from models import BiSeNet, get_deeplab_v2
-from datasets import CityScapes, GTA5
 from torch.utils.data import DataLoader
-from config import CITYSCAPES
+import albumentations as A
+from tqdm import tqdm
+from typing import Tuple, List
+from config import CITYSCAPES, GTA, DEEPLABV2_PATH, CITYSCAPES_PATH, GTA5_PATH
+from datasets import CityScapes, GTA5
+from models import BiSeNet, get_deeplab_v2
+from utils import *
 
-# Training step
+import warnings
+warnings.filterwarnings("ignore")
+
+
 def train_step(model: torch.nn.Module, 
                model_name: str, 
                loss_fn: torch.nn.Module, 
@@ -72,7 +76,6 @@ def train_step(model: torch.nn.Module,
     
     return epoch_loss, epoch_miou, epoch_iou
 
-# Validation step
 def val_step(model: torch.nn.Module,  
              loss_fn: torch.nn.Module, 
              dataloader: torch.utils.data.DataLoader, 
@@ -118,7 +121,6 @@ def val_step(model: torch.nn.Module,
     
     return epoch_loss, epoch_miou, epoch_iou
     
-# Training/Validation Loop
 def train(model: torch.nn.Module, 
           model_name: str, 
           optimizer: torch.optim.Optimizer, 
@@ -217,41 +219,6 @@ def train(model: torch.nn.Module,
         
     return train_loss_list, train_miou_list, train_iou, val_loss_list, val_miou_list, val_iou
 
-def get_data(train=True):
-    if train == True:
-        # train dataset
-        dataset = cityscapes.CityScapes(root_dir=root_dir, 
-                                        split='train', 
-                                        image_transform=image_transform, 
-                                        label_transform=label_transform)
-    else:
-        # test dataset
-        dataset = CityScapes(root_dir=root_dir, 
-                             split='val', 
-                             image_transform=image_transform, 
-                             label_transform=label_transform)
-    
-    return dataset
-
-def make_loader(dataset, batch_size=4, train=True, num_workers=4):
-    if train:
-        # train dataloader
-        dataloader = DataLoader(dataset, 
-                                batch_size=batch_size, 
-                                shuffle=True, 
-                                drop_last=True, 
-                                num_workers=num_workers)
-    else:
-        # test dataloader
-        dataloader = DataLoader(dataset, 
-                                batch_size=batch_size, 
-                                shuffle=False, 
-                                drop_last=True, 
-                                num_workers=num_workers)
-    
-    return dataloader
-
-
 def get_core(model_name, 
              n_classes,
              device,
@@ -261,7 +228,25 @@ def get_core(model_name,
              momentum,
              weight_decay,
              loss_fn_name,
-             ignore_index):
+             ignore_index)->Tuple[torch.nn.Module, torch.optim.Optimizer, torch.nn.Module]:
+    
+    """_summary_
+
+    Args:
+        model_name (_type_): _description_
+        n_classes (_type_): _description_
+        device (_type_): _description_
+        parallelize (_type_): _description_
+        optimizer_name (_type_): _description_
+        lr (_type_): _description_
+        momentum (_type_): _description_
+        weight_decay (_type_): _description_
+        loss_fn_name (_type_): _description_
+        ignore_index (_type_): _description_
+
+    Returns:
+        Tuple[torch.nn.Module, torch.optim.Optimizer, torch.nn.Module]: _description_
+    """
     
     if model_name == 'DeepLabV2':
         model = get_deeplab_v2(num_classes=n_classes, pretrain=True, pretrain_model_path=DEEPLABV2_PATH).to(device)
@@ -295,32 +280,57 @@ def get_core(model_name,
 def get_loaders(train_dataset_name, 
                 val_dataset_name, 
                 augumented,
+                augumentedType,
                 batch_size,
-                n_workers):
+                n_workers)-> Tuple[DataLoader,DataLoader,int,int]:
+    
+    """_summary_
 
-    image_transform = transforms.Compose([ # transforms OR albumentation????
-        transforms.Resize((512,1024)),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    Args:
+        train_dataset_name (_type_): _description_
+        val_dataset_name (_type_): _description_
+        augumented (_type_): _description_
+        augumentedType (_type_): _description_
+        batch_size (_type_): _description_
+        n_workers (_type_): _description_
+
+    Returns:
+        Tuple[DataLoader,DataLoader,int,int]: _description_
+    """
+
+    image_transform_cityscapes = A.Compose([
+        A.Resize((CITYSCAPES['height'],CITYSCAPES['width'])),
+        A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
-    label_transform = transforms.Compose([
-        transforms.Resize((512,1024)),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    image_transform_gta5 = A.Compose([
+        A.Resize((GTA['height'],GTA['width'])),
+        A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    label_transform_cityscapes = A.Compose([
+        A.Resize((CITYSCAPES['height'],CITYSCAPES['width']))
+    ])
+    label_transform_gta5 = A.Compose([
+        A.Resize((GTA['height'],GTA['width']))
     ])
     
+    
+    if augumented:
+        image_transform_gta5 = get_augmented_data(augumentedType)
+    
     if train_dataset_name == 'CityScapes':
-        train_dataset = CityScapes(root_dir='./data/Cityscapes', 
+        train_dataset = CityScapes(root_dir=CITYSCAPES_PATH, 
                                    split='train', 
-                                   image_transform=image_transform, 
-                                   label_transform=label_transform)
+                                   image_transform=image_transform_cityscapes, 
+                                   label_transform=label_transform_cityscapes)
         
         train_loader = DataLoader(train_dataset, 
                                   batch_size=batch_size, 
                                   shuffle=True, 
                                   num_workers=n_workers)
     elif train_dataset_name == 'GTA5':
-        train_dataset = GTA5(root_dir='./data/GTA5', 
-                             image_transform=image_transform, 
-                             label_transform=label_transform)
+        train_dataset = GTA5(root_dir=GTA5_PATH, 
+                             image_transform=image_transform_gta5, 
+                             label_transform=label_transform_gta5)
         
         train_loader = DataLoader(train_dataset, 
                                   batch_size=batch_size, 
@@ -330,10 +340,10 @@ def get_loaders(train_dataset_name,
         print('Train datasets accepted: [CityScapes, GTA5]')
         
     if val_dataset_name == 'CityScapes':
-        val_dataset = CityScapes(root_dir='./data/Cityscapes', 
+        val_dataset = CityScapes(root_dir=CITYSCAPES_PATH, 
                                  split='val', 
-                                 image_transform=image_transform, 
-                                 label_transform=label_transform)
+                                 image_transform=image_transform_cityscapes, 
+                                 label_transform=label_transform_cityscapes)
         
         val_loader = DataLoader(val_dataset, 
                                 batch_size=batch_size, 
@@ -347,14 +357,13 @@ def get_loaders(train_dataset_name,
     
     return train_loader, val_loader, data_height, data_width
     
-    
-
 def pipeline (model_name: str, 
               train_dataset_name: str, 
               val_dataset_name: str,
               n_classes:int,
               epochs: int,
               augumented: bool,
+              augumentedType:str,
               optimizer_name: str,
               lr:float,
               momentum:float,
@@ -368,8 +377,38 @@ def pipeline (model_name: str,
               project_step:str,
               verbose: bool,
               checkpoint_root:str,
-              power:str
+              power:float,
+              evalIterations:int,
+              ignore_model_measurements:bool,
               ):
+    
+    """_summary_
+
+    Args:
+        model_name (str): _description_
+        train_dataset_name (str): _description_
+        val_dataset_name (str): _description_
+        n_classes (int): _description_
+        epochs (int): _description_
+        augumented (bool): _description_
+        augumentedType (str): _description_
+        optimizer_name (str): _description_
+        lr (float): _description_
+        momentum (float): _description_
+        weight_decay (float): _description_
+        loss_fn_name (str): _description_
+        ignore_index (int): _description_
+        batch_size (int): _description_
+        n_workers (int): _description_
+        device (str): _description_
+        parallelize (bool): _description_
+        project_step (str): _description_
+        verbose (bool): _description_
+        checkpoint_root (str): _description_
+        power (float): _description_
+        evalIterations (int): _description_
+        ignore_model_measurements (bool): _description_
+    """
     
     # get model
     model, optimizer, loss_fn = get_core(model_name, 
@@ -386,6 +425,7 @@ def pipeline (model_name: str,
     train_loader, val_loader, data_height, data_width = get_loaders(train_dataset_name, 
                                                                     val_dataset_name, 
                                                                     augumented,
+                                                                    augumentedType,
                                                                     batch_size,
                                                                     n_workers)
     # train
@@ -403,16 +443,48 @@ def pipeline (model_name: str,
                           n_classes=n_classes,
                           power=power)
     
-    #               TODO
-    # evaluationTODO
-    model_info = compute_flops()
-    model_performance = get_latency_and_fps()
-    # visualizationTODO
-    plot_loss(model_results, model_name, project_step, train_dataset_name, val_dataset_name)
-    plot_mIoU(model_results, model_name, project_step, train_dataset_name, val_dataset_name)
-    plot_IoU(model_results, model_name, project_step, train_dataset_name, val_dataset_name)
-    # saveTODO
-    save_results(model, model_results, f"{model_name}_metrics_{project_step}", height=data_height, width=data_width, iterations=100, device=device)
+    # evaluation
+    model_params_flops = compute_flops(model=model, 
+                               height=data_height, 
+                               width=data_width)
+    
+    model_latency_fps = compute_latency_and_fps(model=model,
+                                                height=data_height, 
+                                                width=data_width, 
+                                                iterations=evalIterations, 
+                                                device=device)
+    
+    # visualization
+    plot_loss(model_results, 
+              model_name, 
+              project_step, 
+              train_dataset_name, 
+              val_dataset_name)
+    
+    plot_miou(model_results, 
+              model_name, 
+              project_step, 
+              train_dataset_name, 
+              val_dataset_name)
+    
+    plot_iou(model_results, 
+             model_name, 
+             project_step, 
+             train_dataset_name, 
+             val_dataset_name)
+    
+    # save
+    save_results(model, 
+                 model_results, 
+                 filename=f"{model_name}_metrics_{project_step}", 
+                 height=data_height, 
+                 width=data_width, 
+                 iterations=evalIterations,
+                 model_params_flops=model_params_flops,
+                 model_latency_fps=model_latency_fps,
+                 ignore_model_measurements=ignore_model_measurements,
+                 device=device)
+    
     torch.save(model.state_dict(), f"./checkpoints/{model_name}_{project_step}.pth")
-    #               END OF THE ENTIRE PIPELINE
+
 

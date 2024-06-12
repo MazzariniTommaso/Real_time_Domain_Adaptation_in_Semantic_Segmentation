@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
-from utils import get_id_to_label
 import numpy as np
+from utils import get_id_to_label
 
 # DA RIVEDERE 
 

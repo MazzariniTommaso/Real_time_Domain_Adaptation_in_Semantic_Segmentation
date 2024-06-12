@@ -1,8 +1,7 @@
-import torch
-from computations import compute_flops, compute_latency_and_fps
-from data_processing import get_id_to_label
-from typing import List, Tuple
 import os
+import torch
+from typing import List, Tuple
+from utils import compute_flops, compute_latency_and_fps, get_id_to_label
 
 # DA RIVEDERE SAVE_RESULTS
 
@@ -12,6 +11,8 @@ def save_results(model: torch.nn.Module,
                  height: int, 
                  width: int, 
                  iterations: int, 
+                 model_params_flops:dict,
+                 model_latency_fps:dict,
                  ignore_model_measurements: bool = False, 
                  device: str = 'cuda')->None:
 

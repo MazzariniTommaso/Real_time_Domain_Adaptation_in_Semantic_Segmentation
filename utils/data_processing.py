@@ -1,6 +1,10 @@
 import numpy as np
 from PIL import Image
 import PIL
+from config import GTA
+import albumentations as A
+
+# DA COMMENTARE
 
 def get_color_to_id() -> dict:
     """
@@ -96,3 +100,58 @@ def label_to_rgb(label:np.ndarray, height:int, width:int)->PIL.Image:
             rgb_image[i, j] = id_to_color.get(class_id, (255, 255, 255))  # Default to white if not found
     pil_image = Image.fromarray(rgb_image, 'RGB')
     return pil_image
+
+def get_augmented_data(augumentedType:str)-> A.Compose:
+    """_summary_
+
+    Args:
+        augumentedType (str): _description_
+
+    Returns:
+        A.Compose: _description_
+    """
+    
+    augmentations = {
+        'transform1': A.Compose([
+            A.Resize((GTA['height'],GTA['width'])),
+            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            A.HorizontalFlip(p=0.5),
+            A.ColorJitter(p=0.5)
+        ]),
+        'transform2': A.Compose([
+            A.Resize((GTA['height'],GTA['width'])),
+            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            A.ColorJitter(p=0.5),
+            A.RandomResizedCrop(height=GTA['height'], 
+                                width=GTA['width'], 
+                                scale=(0.5, 1.0), 
+                                ratio=(0.75, 1.333), 
+                                p=0.5)
+        ]),
+        'transform3': A.Compose([
+            A.Resize((GTA['height'],GTA['width'])),
+            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            A.HorizontalFlip(p=0.5),
+            A.RandomRotate90(p=0.5)
+        ]),
+        'transform4': A.Compose([
+            A.Resize((GTA['height'],GTA['width'])),
+            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            A.HorizontalFlip(p=0.5),
+            A.RandomResizedCrop(height=GTA['height'], 
+                                width=GTA['width'], 
+                                scale=(0.5, 1.0), 
+                                ratio=(0.75, 1.333), 
+                                p=0.5),
+            A.RandomRotate90(p=0.5)
+        ]),
+    }
+    
+    if augumentedType in ['transform1','transform2','transform3','transform4']:
+        return augmentations[augumentedType]
+    else:
+        print('Transformarion accepted: [transform1, transform2, transform3, transform4]')
+        return A.Compose([
+            A.Resize((GTA['height'],GTA['width'])),
+            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
