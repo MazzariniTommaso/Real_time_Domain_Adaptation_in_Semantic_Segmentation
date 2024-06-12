@@ -15,7 +15,7 @@ def get_color_to_id() -> dict:
     """
     id_to_color = get_id_to_color()
     color_to_id = {color: id for id, color in id_to_color.items()}
-    return color_to_id    
+    return color_to_id
 
 def get_id_to_color() -> dict:
     """

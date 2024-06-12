@@ -14,8 +14,7 @@ class CityScapes(Dataset):
     def __init__(self, 
                  root_dir:str, 
                  split:str = 'train', 
-                 image_transform: Optional[Compose] = None, 
-                 label_transform: Optional[Compose] = None):
+                 transform: Optional[Compose] = None):
         super(CityScapes, self).__init__()
         
         """
@@ -30,31 +29,17 @@ class CityScapes(Dataset):
         """
         self.root_dir = root_dir
         self.split = split
-        self.image_transform = image_transform
-        self.label_transform = label_transform
-        self.data= self._load_data(split)
-    
-    def _load_data(self, split:str)->list:
+        self.transform = transform
         
-        """
-        
-        _summary
-        
-        Args:
-            split (str): _description_
-
-        Returns:
-            list: _description_
-        """
-        
-        data = []
+        # Load the data
+        self.data = []
         path = os.path.join(self.root_dir, 'images', split)
         for city in os.listdir(path):
             images = os.path.join(path, city)
             for image in os.listdir(images):
-                label = image.replace('images', 'gtFine').replace('_leftImg8bit', '_gtFine_labelTrainIds')
-                data.append((image, label))
-        return data
+                image = os.path.join(images, image)
+                label = image.replace('images', 'gtFine').replace('_leftImg8bit','_gtFine_labelTrainIds')
+                self.data.append((image, label))
 
     def __len__(self)->int:
         
@@ -87,11 +72,10 @@ class CityScapes(Dataset):
         image = Image.open(image_path).convert('RGB')
         label = Image.open(label_path).convert('L')
         image, label = np.array(image), np.array(label)
-
-        if self.image_transform:
-            image = self.image_transform(image) # Only resize
-        if self.label_transform:
-            label = self.label_transform(label) # Only resize
+        
+        if self.transform:
+            transformed = self.transform(image=image, mask=label)
+            image, label = transformed['image'], transformed['mask']
 
         image = torch.from_numpy(image).permute(2, 0, 1).float()/255
         label = torch.from_numpy(label).long()

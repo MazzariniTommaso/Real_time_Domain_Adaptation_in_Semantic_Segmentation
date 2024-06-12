@@ -1,3 +1,4 @@
 data/GTA5
-data/Cityspaces
+data/Cityscapes
 models/deeplab_resnet_pretrained_imagenet.pth
+__pycache__

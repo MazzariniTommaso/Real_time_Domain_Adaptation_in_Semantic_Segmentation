@@ -298,18 +298,10 @@ def get_loaders(train_dataset_name,
         Tuple[DataLoader,DataLoader,int,int]: _description_
     """
 
-    image_transform_cityscapes = A.Compose([
+    transform_cityscapes = A.Compose([
         A.Resize((CITYSCAPES['height'],CITYSCAPES['width'])),
-        A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
-    image_transform_gta5 = A.Compose([
-        A.Resize((GTA['height'],GTA['width'])),
-        A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-    label_transform_cityscapes = A.Compose([
-        A.Resize((CITYSCAPES['height'],CITYSCAPES['width']))
-    ])
-    label_transform_gta5 = A.Compose([
+    transform_gta5 = A.Compose([
         A.Resize((GTA['height'],GTA['width']))
     ])
     
@@ -320,8 +312,7 @@ def get_loaders(train_dataset_name,
     if train_dataset_name == 'CityScapes':
         train_dataset = CityScapes(root_dir=CITYSCAPES_PATH, 
                                    split='train', 
-                                   image_transform=image_transform_cityscapes, 
-                                   label_transform=label_transform_cityscapes)
+                                   transform=transform_cityscapes)
         
         train_loader = DataLoader(train_dataset, 
                                   batch_size=batch_size, 
@@ -329,8 +320,7 @@ def get_loaders(train_dataset_name,
                                   num_workers=n_workers)
     elif train_dataset_name == 'GTA5':
         train_dataset = GTA5(root_dir=GTA5_PATH, 
-                             image_transform=image_transform_gta5, 
-                             label_transform=label_transform_gta5)
+                             transform=transform_gta5)
         
         train_loader = DataLoader(train_dataset, 
                                   batch_size=batch_size, 
@@ -342,8 +332,7 @@ def get_loaders(train_dataset_name,
     if val_dataset_name == 'CityScapes':
         val_dataset = CityScapes(root_dir=CITYSCAPES_PATH, 
                                  split='val', 
-                                 image_transform=image_transform_cityscapes, 
-                                 label_transform=label_transform_cityscapes)
+                                 transform=transform_cityscapes)
         
         val_loader = DataLoader(val_dataset, 
                                 batch_size=batch_size, 

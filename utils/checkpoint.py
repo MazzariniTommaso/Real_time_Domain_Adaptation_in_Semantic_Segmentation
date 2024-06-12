@@ -1,7 +1,7 @@
 import os
 import torch
 from typing import List, Tuple
-from utils import compute_flops, compute_latency_and_fps, get_id_to_label
+from utils import get_id_to_label
 
 # DA RIVEDERE SAVE_RESULTS
 
@@ -33,18 +33,7 @@ def save_results(model: torch.nn.Module,
     metrics, along with the training and validation IoU for each class, to a text file in the
     `./results/logs/` directory.
     """
-
-
-    if not ignore_model_measurements:
-        model_params_flops = compute_flops(model, 
-                                             height=height, 
-                                             width=width)
-        model_latency_fps = compute_latency_and_fps(model, 
-                                                      height=height,
-                                                      width=width,
-                                                      iterations=iterations, 
-                                                      device = device)
-        
+     
     with open(f'./results/logs/{filename}.txt', 'w') as file:
         if not ignore_model_measurements:
             file.write(f"Parameters : {model_params_flops['Parameters']}\n")

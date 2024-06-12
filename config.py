@@ -39,7 +39,7 @@ GTA = {
 }
 
 # Paths
-CITYSCAPES_PATH = 'data/Cityscapes/Cityspaces'
+CITYSCAPES_PATH = 'data/Cityscapes'
 GTA5_PATH = 'data/GTA5'
 DEEPLABV2_PATH = 'models/deeplab_resnet_pretrained_imagenet.pth'
 CHECKPOINT_ROOT = 'checkpoints'
