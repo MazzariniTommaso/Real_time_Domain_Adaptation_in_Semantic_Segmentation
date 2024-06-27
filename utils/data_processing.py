@@ -113,13 +113,13 @@ def get_augmented_data(augumentedType:str)-> A.Compose:
     
     augmentations = {
         'transform1': A.Compose([
-            A.Resize((GTA['height'],GTA['width'])),
+            A.Resize(GTA['height'],GTA['width']),
             A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             A.HorizontalFlip(p=0.5),
             A.ColorJitter(p=0.5)
         ]),
         'transform2': A.Compose([
-            A.Resize((GTA['height'],GTA['width'])),
+            A.Resize(GTA['height'],GTA['width']),
             A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             A.ColorJitter(p=0.5),
             A.RandomResizedCrop(height=GTA['height'], 
@@ -129,13 +129,13 @@ def get_augmented_data(augumentedType:str)-> A.Compose:
                                 p=0.5)
         ]),
         'transform3': A.Compose([
-            A.Resize((GTA['height'],GTA['width'])),
+            A.Resize(GTA['height'],GTA['width']),
             A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             A.HorizontalFlip(p=0.5),
             A.RandomRotate90(p=0.5)
         ]),
         'transform4': A.Compose([
-            A.Resize((GTA['height'],GTA['width'])),
+            A.Resize(GTA['height'],GTA['width']),
             A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             A.HorizontalFlip(p=0.5),
             A.RandomResizedCrop(height=GTA['height'], 
@@ -152,6 +152,6 @@ def get_augmented_data(augumentedType:str)-> A.Compose:
     else:
         print('Transformarion accepted: [transform1, transform2, transform3, transform4]')
         return A.Compose([
-            A.Resize((GTA['height'],GTA['width'])),
+            A.Resize(GTA['height'],GTA['width']),
             A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ])

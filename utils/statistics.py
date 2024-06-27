@@ -2,7 +2,7 @@ import numpy as np
 
 def fast_hist(a, b, n):
     '''
-    a and b are predict and mask respectively
+    a and b are label and prediction respectively
     n is the number of classes
     '''
     k = (a >= 0) & (a < n)

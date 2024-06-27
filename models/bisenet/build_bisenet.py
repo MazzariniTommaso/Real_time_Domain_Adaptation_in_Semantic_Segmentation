@@ -53,7 +53,7 @@ class AttentionRefinementModule(torch.nn.Module):
         return x
 
 
-class AttentionRefinementModule(torch.nn.Module):
+class FeatureFusionModule(torch.nn.Module):
     def __init__(self, num_classes, in_channels):
         super().__init__()
         # self.in_channels = input_1.channels + input_2.channels

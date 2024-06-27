@@ -58,6 +58,11 @@ def train_step(model: torch.nn.Module,
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        
+        # Then clean the cache
+        torch.cuda.empty_cache()
+        # then collect the garbage
+        gc.collect()
 
         total_loss += loss.item()
         
@@ -299,10 +304,10 @@ def get_loaders(train_dataset_name,
     """
 
     transform_cityscapes = A.Compose([
-        A.Resize((CITYSCAPES['height'],CITYSCAPES['width'])),
+        A.Resize(CITYSCAPES['height'],CITYSCAPES['width']),
     ])
     transform_gta5 = A.Compose([
-        A.Resize((GTA['height'],GTA['width']))
+        A.Resize(GTA['height'],GTA['width'])
     ])
     
     

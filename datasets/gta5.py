@@ -16,6 +16,7 @@ class GTA5(Dataset):
     
     def __init__(self, 
                  root_dir:str,
+                 compute_mask:bool,
                  transform: Optional[Compose] = None):
         super(GTA5, self).__init__()
         
@@ -26,13 +27,20 @@ class GTA5(Dataset):
         """
 
         self.root_dir = root_dir
+        self.compute_mask = compute_mask
         self.transform = transform
-        self.color_to_id = get_color_to_id()
+        if self.compute_mask:
+            self.color_to_id = get_color_to_id()
         
         # Load the data
         self.data = []
         image_dir = os.path.join(self.root_dir, 'images')
-        label_dir = os.path.join(self.root_dir, 'labels')
+        
+        if self.compute_mask:
+            label_dir = os.path.join(self.root_dir, 'labels')
+        else:
+            label_dir = os.path.join(self.root_dir, 'masks')
+            
         for filename in os.listdir(image_dir):
             image = os.path.join(image_dir, filename)
             label = os.path.join(label_dir, filename)
@@ -46,7 +54,7 @@ class GTA5(Dataset):
             int: _description_
         """
         
-        return len(self.image_files)
+        return len(self.data)
 
     def __getitem__(self, idx:int)-> Tuple[torch.Tensor,torch.Tensor]:
         
@@ -61,9 +69,14 @@ class GTA5(Dataset):
         
         image_path, label_path = self.data[idx]
 
-        # Load image and label
+        # Load images and labels or masks
         image = Image.open(image_path).convert('RGB')
-        label = self._rgb_to_label(Image.open(label_path).convert('RGB'))
+        
+        if self.compute_mask:
+            label = self._rgb_to_label(Image.open(label_path).convert('RGB'))
+        else:
+            label = Image.open(label_path).convert('L')
+            
         image, label = np.array(image), np.array(label)
         
         if self.transform:

@@ -130,8 +130,10 @@ def load_checkpoint(checkpoint_root: str,
         return False, start_epoch, train_loss_list, train_miou_list, train_iou, val_loss_list, val_miou_list, val_iou
     
     else:
-        dir = checkpoint_root + "/" + step
-        os.mkdir(dir)
-        print(f"No checkpoint found in {dir}.\tStarting from scratch.")
+        directory = checkpoint_root + "/" + project_step
+        if not os.path.exists(directory):
+            os.mkdir(directory)
+        print(f"No checkpoint found in {directory}.\tStarting from scratch.")
+
         return True, None, None, None, None, None, None, None
   

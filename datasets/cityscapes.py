@@ -51,7 +51,7 @@ class CityScapes(Dataset):
             int: _description_
         """
         
-        return len(self.image_files)
+        return len(self.data)
 
     def __getitem__(self, idx:int)-> Tuple[torch.Tensor, torch.Tensor]:
         
