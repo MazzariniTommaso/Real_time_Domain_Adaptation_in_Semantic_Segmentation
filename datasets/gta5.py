@@ -16,7 +16,7 @@ class GTA5(Dataset):
     
     def __init__(self, 
                  root_dir:str,
-                 compute_mask:bool,
+                 compute_mask:bool=False,
                  transform: Optional[Compose] = None):
         super(GTA5, self).__init__()
         
