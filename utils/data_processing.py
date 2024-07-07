@@ -77,29 +77,27 @@ def get_id_to_label() -> dict:
         255: 'unlabeled'
     }
 
-def label_to_rgb(label:np.ndarray, height:int, width:int)->PIL.Image:
+def label_to_rgb(label:np.ndarray)->PIL.Image:
     """
     Converts a 2D numpy array of class IDs (labels) into an RGB image.
 
     Args:
         label (np.ndarray): 2D numpy array containing class IDs.
-        height (int): Height of the output RGB image.
-        width (int): Width of the output RGB image.
-
     Returns:
         PIL.Image.Image: RGB image where each pixel corresponds to a color based on class ID.
     """
     
     id_to_color = get_id_to_color()
+    color_image = np.zeros((label.shape[0], label.shape[1], 3), dtype=np.uint8)
     
-    height, width = label.shape
-    rgb_image = np.zeros((height, width, 3), dtype=np.uint8)
-    for i in range(height):
-        for j in range(width):
-            class_id = label[i, j]
-            rgb_image[i, j] = id_to_color.get(class_id, (255, 255, 255))  # Default to white if class_id not found
-    pil_image = Image.fromarray(rgb_image, 'RGB')
-    return pil_image
+    for class_id, color in id_to_color.items():
+        color_image[label == class_id] = color
+        
+    # Set color to black for label 255
+    color_image[label == 255] = (0, 0, 0)
+    
+    return Image.fromarray(color_image, 'RGB')
+
 
 def get_augmented_data(augmentedType: str) -> A.Compose:
     """

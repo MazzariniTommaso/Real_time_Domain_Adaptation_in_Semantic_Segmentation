@@ -4,6 +4,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import albumentations as A
 from tqdm import tqdm
+from itertools import cycle
 from typing import Tuple, List
 from config import CITYSCAPES, GTA, DEEPLABV2_PATH, CITYSCAPES_PATH, GTA5_PATH
 from datasets import CityScapes, GTA5
@@ -12,6 +13,7 @@ from utils import *
 import warnings
 warnings.filterwarnings("ignore")
 torch.cuda.manual_seed(42)
+
 
 def get_core(model_name: str, 
              n_classes: int,
