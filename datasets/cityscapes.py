@@ -6,27 +6,26 @@ import os
 from typing import Optional, Tuple
 from albumentations import Compose
 
+
 class CityScapes(Dataset):
     
     """
-    _summary_
+    A dataset class for loading and processing the CityScapes dataset.
     """
     def __init__(self, 
                  root_dir:str, 
                  split:str = 'train', 
                  transform: Optional[Compose] = None):
-        super(CityScapes, self).__init__()
-        
         """
-        
-        _summary
-        
+        Initializes the CityScapes dataset.
+
         Args:
-            root_dir (string): Directory with all the images and annotations.
-            split (string): 'train' or 'val'.
-            image_transform (callable, optional): Optional transform to be applied on a sample image.
-            label_transform (callable, optional): Optional transform to be applied on a sample label.
+            root_dir (str): Root directory of the dataset.
+            split (str, optional): Dataset split to use ('train', 'val', 'test'). Defaults to 'train'.
+            transform (Optional[Compose], optional): Transformations to be applied on images and labels.. Defaults to None.
         """
+        super(CityScapes, self).__init__()
+
         self.root_dir = root_dir
         self.split = split
         self.transform = transform
@@ -41,31 +40,25 @@ class CityScapes(Dataset):
                 label = image.replace('images', 'gtFine').replace('_leftImg8bit','_gtFine_labelTrainIds')
                 self.data.append((image, label))
 
-    def __len__(self)->int:
-        
+    def __len__(self)->int:   
         """
-        
-        _summary
-        
+        Returns the total number of samples in the dataset.
+
         Returns:
-            int: _description_
-        """
-        
+            int: Number of samples in the dataset.
+        """ 
         return len(self.data)
 
     def __getitem__(self, idx:int)-> Tuple[torch.Tensor, torch.Tensor]:
-        
         """
-        
-        _summary
-        
+        Generates one sample of data.
+
         Args:
-            idx (int): _description_
+            idx (int): Index of the sample to retrieve.
 
         Returns:
-            tuple[torch.Tensor, torch.Tensor]: _description_
+            Tuple[torch.Tensor, torch.Tensor]: Tuple containing the image and the corresponding label.
         """
-        
         image_path, label_path = self.data[idx]
 
         # Load image and label

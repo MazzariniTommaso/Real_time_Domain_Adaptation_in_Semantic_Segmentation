@@ -4,26 +4,26 @@ import PIL
 from config import GTA
 import albumentations as A
 
-# DA COMMENTARE
-
 def get_color_to_id() -> dict:
     """
-    Returns a dictionary mapping RGB color tuples to their corresponding class IDs.
+    Creates a dictionary mapping color representations to their corresponding IDs.
 
     Returns:
-        dict: A dictionary where keys are RGB color tuples and values are class IDs.
+        dict: A dictionary where keys are color representations (RGB tuples) and values are IDs.
     """
+    
     id_to_color = get_id_to_color()
     color_to_id = {color: id for id, color in id_to_color.items()}
     return color_to_id
 
 def get_id_to_color() -> dict:
     """
-    Returns a dictionary mapping class IDs to their corresponding colors.
+    Returns a dictionary mapping class IDs to their corresponding RGB color representations.
 
     Returns:
-        dict: A dictionary where keys are class IDs and values are RGB color tuples.
+        dict: A dictionary where keys are class IDs (integers) and values are RGB tuples.
     """
+
     return {
         0: (128, 64, 128),    # road
         1: (244, 35, 232),    # sidewalk
@@ -48,11 +48,12 @@ def get_id_to_color() -> dict:
 
 def get_id_to_label() -> dict:
     """
-    Returns a dictionary mapping class IDs to their corresponding labels.
+    Returns a dictionary mapping class IDs to their corresponding semantic labels.
 
     Returns:
-        dict: A dictionary where keys are class IDs and values are labels.
+        dict: A dictionary where keys are class IDs (integers) and values are semantic labels (strings).
     """
+
     return {
         0: 'road',
         1: 'sidewalk',
@@ -78,18 +79,17 @@ def get_id_to_label() -> dict:
 
 def label_to_rgb(label:np.ndarray, height:int, width:int)->PIL.Image:
     """
-    Transforms a label matrix into a corresponding RGB image utilizing a predefined color map.
+    Converts a 2D numpy array of class IDs (labels) into an RGB image.
 
-    This function maps each label identifier in a two-dimensional array to a specific color, thereby generating an RGB image. This is particularly useful for visualizing segmentation results where each label corresponds to a different segment class.
-
-    Parameters:
-        label (np.ndarray): A two-dimensional array where each element represents a label identifier.
-        height (int): The desired height of the resulting RGB image.
-        width (int): The desired width of the resulting RGB image.
+    Args:
+        label (np.ndarray): 2D numpy array containing class IDs.
+        height (int): Height of the output RGB image.
+        width (int): Width of the output RGB image.
 
     Returns:
-        PIL.Image: An image object representing the RGB image constructed from the label matrix.
+        PIL.Image.Image: RGB image where each pixel corresponds to a color based on class ID.
     """
+    
     id_to_color = get_id_to_color()
     
     height, width = label.shape
@@ -97,30 +97,42 @@ def label_to_rgb(label:np.ndarray, height:int, width:int)->PIL.Image:
     for i in range(height):
         for j in range(width):
             class_id = label[i, j]
-            rgb_image[i, j] = id_to_color.get(class_id, (255, 255, 255))  # Default to white if not found
+            rgb_image[i, j] = id_to_color.get(class_id, (255, 255, 255))  # Default to white if class_id not found
     pil_image = Image.fromarray(rgb_image, 'RGB')
     return pil_image
 
-def get_augmented_data(augumentedType:str)-> A.Compose:
-    """_summary_
+def get_augmented_data(augmentedType: str) -> A.Compose:
+    """
+    Returns an augmentation pipeline based on the specified `augmentedType`.
 
     Args:
-        augumentedType (str): _description_
+        augmentedType (str): Type of augmentation pipeline to return.
+            Possible values: 'transform1', 'transform2', 'transform3', 'transform4'.
 
     Returns:
-        A.Compose: _description_
+        A.Compose: Augmentation pipeline defined using Albumentations library.
     """
-    
+    # Define different augmentation pipelines
     augmentations = {
         'transform1': A.Compose([
-            A.Resize(GTA['height'],GTA['width']),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            A.Resize(GTA['height'], GTA['width']),
             A.HorizontalFlip(p=0.5),
             A.ColorJitter(p=0.5)
         ]),
         'transform2': A.Compose([
-            A.Resize(GTA['height'],GTA['width']),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            A.Resize(GTA['height'], GTA['width']),
+            A.HorizontalFlip(p=0.5),
+            A.GaussianBlur(p=0.5)
+        ]),
+        'transform3': A.Compose([
+            A.Resize(GTA['height'], GTA['width']),
+            A.HorizontalFlip(p=0.5),
+            A.GaussianBlur(p=0.5)
+        ]),
+        'transform4': A.Compose([
+            A.Resize(GTA['height'], GTA['width']),
+            A.HorizontalFlip(p=0.5),
+            A.GaussianBlur(p=0.5),
             A.ColorJitter(p=0.5),
             A.RandomResizedCrop(height=GTA['height'], 
                                 width=GTA['width'], 
@@ -128,30 +140,13 @@ def get_augmented_data(augumentedType:str)-> A.Compose:
                                 ratio=(0.75, 1.333), 
                                 p=0.5)
         ]),
-        'transform3': A.Compose([
-            A.Resize(GTA['height'],GTA['width']),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            A.HorizontalFlip(p=0.5),
-            A.RandomRotate90(p=0.5)
-        ]),
-        'transform4': A.Compose([
-            A.Resize(GTA['height'],GTA['width']),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            A.HorizontalFlip(p=0.5),
-            A.RandomResizedCrop(height=GTA['height'], 
-                                width=GTA['width'], 
-                                scale=(0.5, 1.0), 
-                                ratio=(0.75, 1.333), 
-                                p=0.5),
-            A.RandomRotate90(p=0.5)
-        ]),
     }
     
-    if augumentedType in ['transform1','transform2','transform3','transform4']:
-        return augmentations[augumentedType]
+    # Return the specified augmentation pipeline if it exists
+    if augmentedType in ['transform1', 'transform2', 'transform3', 'transform4']:
+        return augmentations[augmentedType]
     else:
-        print('Transformarion accepted: [transform1, transform2, transform3, transform4]')
+        print('Transformation accepted: [transform1, transform2, transform3, transform4]')
         return A.Compose([
-            A.Resize(GTA['height'],GTA['width']),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ])
+            A.Resize(GTA['height'], GTA['width']),
+        ])

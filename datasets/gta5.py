@@ -11,21 +11,23 @@ from utils import get_color_to_id
 class GTA5(Dataset):
     
     """
-    _summary_    
+    A dataset class for loading and processing the GTA5 dataset.
     """
     
     def __init__(self, 
                  root_dir:str,
                  compute_mask:bool=False,
                  transform: Optional[Compose] = None):
+        """
+        Initializes the GTA5 dataset.
+
+        Args:
+            root_dir (str): Root directory of the dataset.
+            compute_mask (bool, optional): Whether to compute the mask from RGB labels. Defaults to False.
+            transform (Optional[Compose], optional): Transformations to be applied on images and labels. Defaults to None.
+        """
         super(GTA5, self).__init__()
         
-        """
-        Args:
-            root_dir (string): Directory with all the images and annotations.
-            transform (callable, optional): Optional transform to be applied on a sample.
-        """
-
         self.root_dir = root_dir
         self.compute_mask = compute_mask
         self.transform = transform
@@ -45,28 +47,47 @@ class GTA5(Dataset):
             image = os.path.join(image_dir, filename)
             label = os.path.join(label_dir, filename)
             self.data.append((image, label))
-        
-    def __len__(self)->int:
-        
-        """_summary_
+            
+    def _rgb_to_label(self, image:Image.Image)->np.ndarray:
+        """
+        Converts an RGB image to a label image using the color to ID mapping.
+
+        Args:
+            image (Image.Image): The input RGB image.
 
         Returns:
-            int: _description_
+            np.ndarray: The label image.
         """
+        gray_image = Image.new('L', image.size)
+        rgb_pixels = image.load()
+        gray_pixels = gray_image.load()
         
+        for i in range(image.width):
+            for j in range(image.height):
+                rgb = rgb_pixels[i,j]
+                gray_pixels[i,j] = self.color_to_id.get(rgb,255)
+                
+        return gray_image
+        
+    def __len__(self)->int: 
+        """
+        Returns the total number of samples in the dataset.
+
+        Returns:
+            int: Number of samples in the dataset.
+        """
         return len(self.data)
 
     def __getitem__(self, idx:int)-> Tuple[torch.Tensor,torch.Tensor]:
-        
-        """_summary_
+        """
+        Generates one sample of data.
 
         Args:
-            idx (int): _description_
+            idx (int): Index of the sample to retrieve.
 
         Returns:
-            Tuple[torch.Tensor,torch.Tensor]: _description_
+            Tuple[torch.Tensor, torch.Tensor]: Tuple containing the image and the corresponding label or mask.
         """
-        
         image_path, label_path = self.data[idx]
 
         # Load images and labels or masks
@@ -86,24 +107,3 @@ class GTA5(Dataset):
         image = torch.from_numpy(image).permute(2, 0, 1).float()/255
         label = torch.from_numpy(label).long()
         return image, label
-    
-    def _rgb_to_label(self, image:Image.Image)->np.ndarray:
-        """_summary_
-
-        Args:
-            image (Image.Image): _description_
-
-        Returns:
-            np.ndarray: _description_
-        """
-        
-        gray_image = Image.new('L', image.size)
-        rgb_pixels = image.load()
-        gray_pixels = gray_image.load()
-        
-        for i in range(image.width):
-            for j in range(image.height):
-                rgb = rgb_pixels[i,j]
-                gray_pixels[i,j] = self.color_to_id.get(rgb,255)
-                
-        return gray_image

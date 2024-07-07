@@ -12,13 +12,11 @@ MODEL_NAME = 'DeepLabV2'  # [DeepLabV2, BiSeNet]
 
 # Optimizer
 OPTIMIZER_NAME = 'SGD'  # [SGD, Adam]
-
-# Loss function
 LOSS_FN_NAME = 'CrossEntropyLoss'  # [CrossEntropyLoss]
 WEIGHT_DECAY = 5e-4
 MOMENTUM = 0.9
-LR = 0.001
-POWER = 0.9 # for poly_lr_scheduler 
+LR = 2.5e-4
+POWER = 0.9  # for poly_lr_scheduler 
 IGNORE_INDEX = 255
 
 # Datasets
@@ -30,11 +28,11 @@ AUGMENTED_TYPE = 'transform1'  # [transform1, transform2, transform3, transform4
 BATCH_SIZE = 4  # [2, 4, 8]
 N_WORKERS = 4  # [0, 2, 4]
 CITYSCAPES = {
-    'width': 1024, 
+    'width': 1024,
     'height': 512
 }
 GTA = {
-    'width': 1280, 
+    'width': 1280,
     'height': 720
 }
 

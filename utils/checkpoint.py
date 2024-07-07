@@ -1,88 +1,125 @@
 import os
 import torch
-from typing import List, Tuple
+from typing import List, Dict, Tuple, Optional
 from utils import get_id_to_label
+from config import CHECKPOINT_ROOT
 
-# DA RIVEDERE SAVE_RESULTS
-
-def save_results(model: torch.nn.Module, 
-                 model_results: list, 
-                 filename: str, 
-                 height: int, 
-                 width: int, 
-                 iterations: int, 
-                 model_params_flops:dict,
-                 model_latency_fps:dict,
-                 ignore_model_measurements: bool = False, 
-                 device: str = 'cuda')->None:
-
-
+def save_results(model_results: List[List[float]], 
+                 filename: str,
+                 project_step: str,
+                 model_params_flops: Dict[str, float],
+                 model_latency_fps: Dict[str, float]) -> None:
     """
-    Saves the model results and performance metrics to a specified file.
+    Saves the model results to a text file.
 
     Args:
-        model (torch.nn.Module): The model whose results are being saved.
-        model_results (list): A list containing the model's performance metrics and results.
-        filename (str): The name of the file where the results will be saved.
-        height (int): The height of the input images.
-        width (int): The width of the input images.
-        iterations (int): The number of iterations to measure latency and fps.
-        ignore_model_measurements (bool, optional): If True, the model measurements will be ignored. Defaults to False.
-    This function computes the FLOPS and parameters of the model using the `compute_flops` function,
-    and measures the latency and FPS using the `get_latency_and_fps` function. It then writes these
-    metrics, along with the training and validation IoU for each class, to a text file in the
-    `./results/logs/` directory.
+        model_results (List[List[float]]): A list containing model results.
+            - model_results[0]: List of training losses.
+            - model_results[1]: List of validation losses.
+            - model_results[2]: List of training mIoU scores.
+            - model_results[3]: List of validation mIoU scores.
+            - model_results[4]: List of training IoU scores for each class.
+            - model_results[5]: List of validation IoU scores for each class.
+        filename (str): The name of the file to save the results in.
+        project_step (str): The current project step, used for directory naming.
+        model_params_flops (Dict[str, float]): Dictionary containing model parameters and FLOPS.
+            - 'Parameters': Number of parameters.
+            - 'FLOPS': Floating Point Operations per Second.
+        model_latency_fps (Dict[str, float]): Dictionary containing model latency and FPS information.
+            - 'Latency_mean': Mean latency.
+            - 'Latency_std': Standard deviation of latency.
+            - 'FPS_mean': Mean FPS.
+            - 'FPS_std': Standard deviation of FPS.
     """
-     
-    with open(f'./results/logs/{filename}.txt', 'w') as file:
-        if not ignore_model_measurements:
-            file.write(f"Parameters : {model_params_flops['Parameters']}\n")
-            file.write(f"FLOPS : {model_params_flops['FLOPS']}\n")
-            file.write(f"Mean Latency = {model_latency_fps[0]}\n")
-            file.write(f"STD Latency = {model_latency_fps[1]}\n")
-            file.write(f"Mean FPS = {model_latency_fps[2]}\n")
-            file.write(f"STD FPS = {model_latency_fps[3]}\n")
-        file.write(f'Training Loss = {model_results[0][-1]}\n')
-        file.write(f'Validation Loss = {model_results[1][-1]}\n')
-        file.write(f'Training mIoU = {model_results[2][-1]}\n')
-        file.write(f'Validation mIoU = {model_results[3][-1]}\n')
-        for i in range(0, 19):
-            file.write(f"Training IoU for class {get_id_to_label()[i]} = {model_results[4][i]}\n")
-        for i in range(0, 19):
-            file.write(f"Validation IoU for class {get_id_to_label()[i]} = {model_results[5][i]}\n")
+    
+    # Construct the checkpoint path
+    checkpoint_path = f'{CHECKPOINT_ROOT}/{project_step}'
+    
+    # Create the directory if it does not exist
+    if not os.path.exists(checkpoint_path):
+        os.makedirs(checkpoint_path)
+    
+    # Open the file for writing
+    with open(f"{checkpoint_path}/{filename}.txt", 'w') as file:
+        # Write model parameters and FLOPS
+        file.write(f"Parameters: {model_params_flops['Parameters']}\n")
+        file.write(f"FLOPS: {model_params_flops['FLOPS']}\n")
+        
+        # Write latency information
+        file.write("Latency:\n")
+        file.write(f"\tmean: {model_latency_fps['Latency_mean']}\n")
+        file.write(f"\tstd: {model_latency_fps['Latency_std']}\n")
+        
+        # Write FPS information
+        file.write("FPS:\n")
+        file.write(f"\tmean: {model_latency_fps['FPS_mean']}\n")
+        file.write(f"\tstd: {model_latency_fps['FPS_std']}\n")
+        
+        # Write loss information
+        file.write("Loss:\n")
+        file.write(f"\ttrain: {model_results[0][-1]}\n")
+        file.write(f"\tval: {model_results[1][-1]}\n")
+        
+        # Write mIoU information
+        file.write("mIoU:\n")
+        file.write(f"\ttrain: {model_results[2][-1]}\n")
+        file.write(f"\tval: {model_results[3][-1]}\n")
+        
+        # Write training IoU for each class
+        file.write("Training IoU for class:\n")
+        for i, iou in enumerate(model_results[4]):
+            file.write(f"{get_id_to_label()[i]}: {iou}\n")
+        
+        # Write validation IoU for each class
+        file.write("Validation IoU for class:\n")
+        for i, iou in enumerate(model_results[5]):
+            file.write(f"{get_id_to_label()[i]}: {iou}\n")
             
-
 def save_checkpoint(checkpoint_root: str,
-                    step: str, 
+                    project_step: str, 
                     model: torch.nn.Module, 
+                    model_D: torch.nn.Module, 
                     optimizer: torch.optim.Optimizer, 
+                    optimizer_D: torch.optim.Optimizer, 
                     epoch: int,
                     train_loss_list: List[float], 
                     train_miou_list: List[float],
                     train_iou: List[float],
                     val_loss_list: List[float],
                     val_miou_list: List[float],
-                    val_iou: List[float]):
-    """_summary_
+                    val_iou: List[float],
+                    verbose: bool)->None:
+    """
+    Saves the current state of the training process to a checkpoint file.
 
     Args:
-        checkpoint_root (str): _description_
-        step (str): _description_
-        model (torch.nn.Module): _description_
-        optimizer (torch.optim.Optimizer): _description_
-        epoch (int): _description_
-        train_loss_list (List[float]): _description_
-        train_miou_list (List[float]): _description_
-        train_iou (List[float]): _description_
-        val_loss_list (List[float]): _description_
-        val_miou_list (List[float]): _description_
-        val_iou (List[float]): _description_
+        checkpoint_root (str): The root directory where the checkpoint will be saved.
+        project_step (str): The current project step or phase, used for naming the checkpoint file.
+        model (torch.nn.Module): The main model whose state is to be saved.
+        model_D (torch.nn.Module): The auxiliary or discriminator model whose state is to be saved.
+        optimizer (torch.optim.Optimizer): The optimizer for the main model.
+        optimizer_D (torch.optim.Optimizer): The optimizer for the auxiliary/discriminator model.
+        epoch (int): The current epoch number.
+        train_loss_list (List[float]): List of training losses over epochs.
+        train_miou_list (List[float]): List of training mean Intersection over Union (mIoU) scores over epochs.
+        train_iou (List[float]): List of training IoU scores for each class.
+        val_loss_list (List[float]): List of validation losses over epochs.
+        val_miou_list (List[float]): List of validation mIoU scores over epochs.
+        val_iou (List[float]): List of validation IoU scores for each class.
+        verbose (bool): If True, prints a message confirming the checkpoint has been saved.
+
+    Returns:
+        None
     """
+    # Construct the path for the checkpoint file
+    checkpoint_path = f'{checkpoint_root}/{project_step}/checkpoint.pth'
     
-    checkpoint_path = os.path.join(checkpoint_root + "/" + step, "/checkpoint.pth")
+    # Save the state of the training process, including model parameters, optimizers, and performance metrics
     torch.save({
         'model': model.state_dict(),
+        'model_D': model_D.state_dict(),
         'optimizer': optimizer.state_dict(),
+        'optimizer_D': optimizer_D.state_dict(),
         'epoch': epoch + 1,
         'train_loss_list': train_loss_list,
         'train_miou_list': train_miou_list,
@@ -91,32 +128,55 @@ def save_checkpoint(checkpoint_root: str,
         'val_miou_list': val_miou_list,
         'val_iou': val_iou
     }, checkpoint_path)
-    print(f"Checkpoint saved in {checkpoint_path} | Epoch: {epoch}")
+    
+    # If verbose is True, print a confirmation message
+    if verbose == True:
+        print(f"Checkpoint saved in {checkpoint_path}")
     
 def load_checkpoint(checkpoint_root: str,
-                    step: str, 
+                    project_step: str, 
                     model: torch.nn.Module, 
-                    optimizer: torch.optim.Optimizer) -> Tuple[int, List[float],List[float],List[float],List[float],List[float],List[float]]:
-    """_summary_
+                    model_D: torch.nn.Module,
+                    optimizer: torch.optim.Optimizer,
+                    optimizer_D: torch.optim.Optimizer) -> Tuple[bool, Optional[int], Optional[List[float]], Optional[List[float]], Optional[List[float]], Optional[List[float]], Optional[List[float]], Optional[List[float]]]:
+    """
+    Loads the checkpoint from the specified directory and restores the model, optimizer, and training state.
 
     Args:
-        checkpoint_root (str): _description_
-        step (str): _description_
-        model (torch.nn.Module): _description_
-        optimizer (torch.optim.Optimizer): _description_
+        checkpoint_root (str): The root directory where the checkpoint is stored.
+        project_step (str): The current project step or phase, used for constructing the checkpoint file path.
+        model (torch.nn.Module): The main model to load the state dictionary into.
+        model_D (torch.nn.Module): The auxiliary or discriminator model to load the state dictionary into.
+        optimizer (torch.optim.Optimizer): The optimizer for the main model to load the state dictionary into.
+        optimizer_D (torch.optim.Optimizer): The optimizer for the auxiliary/discriminator model to load the state dictionary into.
 
     Returns:
-        Tuple[int, List[float],List[float],List[float],List[float],List[float],List[float]]: _description_
+        Tuple[bool, Optional[int], Optional[List[float]], Optional[List[float]], Optional[List[float]], Optional[List[float]], Optional[List[float]], Optional[List[float]]]:
+            - bool: Indicates whether to start training from scratch (True) or resume from a checkpoint (False).
+            - Optional[int]: The epoch to resume from, if a checkpoint is found.
+            - Optional[List[float]]: List of training losses over epochs, if a checkpoint is found.
+            - Optional[List[float]]: List of training mean Intersection over Union (mIoU) scores over epochs, if a checkpoint is found.
+            - Optional[List[float]]: List of training IoU scores for each class, if a checkpoint is found.
+            - Optional[List[float]]: List of validation losses over epochs, if a checkpoint is found.
+            - Optional[List[float]]: List of validation mIoU scores over epochs, if a checkpoint is found.
+            - Optional[List[float]]: List of validation IoU scores for each class, if a checkpoint is found.
     """
+
+    # Construct the path to the checkpoint file
+    checkpoint_path = f'{checkpoint_root}/{project_step}/checkpoint.pth'
     
-    checkpoint_path = os.path.join(checkpoint_root + "/" + step, "/checkpoint.pth")
-    
+    # Check if the checkpoint file exists
     if os.path.exists(checkpoint_path):
+        # Load the checkpoint
+        checkpoint = torch.load(checkpoint_path)
         
-        checkpoint = torch.load(checkpoint_root + "/" + step + "/checkpoint.pth")
-        
+        # Load the state dictionaries into the model, auxiliary model, and optimizers
         model.load_state_dict(checkpoint['model'])
+        model_D.load_state_dict(checkpoint['model_D'])
         optimizer.load_state_dict(checkpoint['optimizer'])
+        optimizer_D.load_state_dict(checkpoint['optimizer_D'])
+        
+        # Extract training state information
         start_epoch = checkpoint['epoch']
         train_loss_list = checkpoint['train_loss_list']
         train_miou_list = checkpoint['train_miou_list']
@@ -125,15 +185,21 @@ def load_checkpoint(checkpoint_root: str,
         val_miou_list = checkpoint['val_miou_list']
         val_iou = checkpoint['val_iou']
         
-        print(f"Checkpoint found.\tResuming from epoch {start_epoch}.")
+        # Print a message indicating the checkpoint was found and loaded
+        print(f"Checkpoint found. Resuming from epoch {start_epoch}.")
         
-        return False, start_epoch, train_loss_list, train_miou_list, train_iou, val_loss_list, val_miou_list, val_iou
+        # Return the state indicating that training can resume from the checkpoint
+        return (False, start_epoch, train_loss_list, train_miou_list, train_iou, val_loss_list, val_miou_list, val_iou)
     
     else:
-        directory = checkpoint_root + "/" + project_step
+        # Create the directory if it does not exist
+        directory = f'{checkpoint_root}/{project_step}'
         if not os.path.exists(directory):
-            os.mkdir(directory)
-        print(f"No checkpoint found in {directory}.\tStarting from scratch.")
-
-        return True, None, None, None, None, None, None, None
+            os.makedirs(directory)
+        
+        # Print a message indicating no checkpoint was found and training will start from scratch
+        print(f"No checkpoint found in {directory}. Starting from scratch.")
+        
+        # Return the state indicating that training should start from scratch
+        return (True, None, None, None, None, None, None, None)
   

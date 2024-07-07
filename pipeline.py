@@ -1,76 +1,342 @@
 import numpy as np
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 import albumentations as A
 from tqdm import tqdm
 from typing import Tuple, List
 from config import CITYSCAPES, GTA, DEEPLABV2_PATH, CITYSCAPES_PATH, GTA5_PATH
 from datasets import CityScapes, GTA5
-from models import BiSeNet, get_deeplab_v2
+from models import BiSeNet, get_deeplab_v2, FCDiscriminator
 from utils import *
-
 import warnings
 warnings.filterwarnings("ignore")
+torch.cuda.manual_seed(42)
 
+def get_core(model_name: str, 
+             n_classes: int,
+             device: str,
+             parallelize: bool,
+             optimizer_name: str, 
+             lr: float,
+             momentum: float,
+             weight_decay: float,
+             loss_fn_name: str,
+             ignore_index: int,
+             adversarial: bool) -> Tuple[torch.nn.Module, torch.optim.Optimizer, torch.nn.Module, torch.nn.Module, torch.optim.Optimizer, torch.nn.Module]:
+    """
+    Set up components for semantic segmentation model training.
+
+    Args:
+    - model_name (str): Name of the segmentation model ('DeepLabV2' or 'BiSeNet').
+    - n_classes (int): Number of classes in the dataset.
+    - device (str): Device to run the model on ('cpu' or 'cuda').
+    - parallelize (bool): Whether to use DataParallel for multi-GPU training.
+    - optimizer_name (str): Name of the optimizer ('Adam' or 'SGD').
+    - lr (float): Learning rate for the optimizer.
+    - momentum (float): Momentum factor for SGD optimizer.
+    - weight_decay (float): Weight decay (L2 penalty) for the optimizer.
+    - loss_fn_name (str): Name of the loss function ('CrossEntropyLoss').
+    - ignore_index (int): Index to ignore in loss computation.
+    - adversarial (bool): Whether to include adversarial training components.
+
+    Raises:
+    - ValueError: If an invalid model_name, optimizer_name, or loss_fn_name is provided.
+
+    Returns:
+    - Tuple containing:
+        - model (nn.Module): Segmentation model.
+        - optimizer (torch.optim.Optimizer): Optimizer for the segmentation model.
+        - loss_fn (nn.Module): Loss function for the segmentation model.
+        - model_D (nn.Module or None): Discriminator model for adversarial training (if adversarial=True).
+        - optimizer_D (torch.optim.Optimizer or None): Optimizer for the discriminator model (if adversarial=True).
+        - loss_D (nn.Module or None): Loss function for the discriminator model (if adversarial=True).
+    """
+    
+    model = None
+    optimizer = None
+    loss_fn = None
+    model_D = None
+    optimizer_D = None
+    loss_D = None
+    
+    # Initialize segmentation model based on model_name
+    if model_name == 'DeepLabV2':
+        model = get_deeplab_v2(num_classes=n_classes, pretrain=True, pretrain_model_path=DEEPLABV2_PATH).to(device)
+        if parallelize and device == 'cuda' and torch.cuda.device_count() > 1:
+            model = torch.nn.DataParallel(model).to(device)
+    elif model_name == 'BiSeNet':
+        model = BiSeNet(num_classes=n_classes, context_path="resnet18").to(device)
+        if parallelize and device == 'cuda' and torch.cuda.device_count() > 1:
+            model = torch.nn.DataParallel(model).to(device)
+    else:
+        raise ValueError('Model accepted: [DeepLabV2, BiSeNet]')
+            
+    # Initialize optimizer based on optimizer_name
+    if optimizer_name == 'Adam':
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    elif optimizer_name == 'SGD':
+        optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
+    else:
+        raise ValueError('Optimizer accepted: [Adam, SGD]')
+        
+    # Initialize loss function based on loss_fn_name
+    if loss_fn_name == 'CrossEntropyLoss':
+        loss_fn = torch.nn.CrossEntropyLoss(ignore_index=ignore_index)
+    else:
+        raise ValueError('Loss function accepted: [CrossEntropyLoss]')
+    
+    # Initialize adversarial components if adversarial is True
+    if adversarial:
+        model_D = FCDiscriminator(num_classes=n_classes).to(device)
+        if parallelize and device == 'cuda' and torch.cuda.device_count() > 1:
+            model_D = torch.nn.DataParallel(model_D).to(device)
+        optimizer_D = torch.optim.Adam(model_D.parameters(), lr=1e-3, betas=(0.9, 0.99))
+        loss_D = torch.nn.BCEWithLogitsLoss()
+        
+    return model, optimizer, loss_fn, model_D, optimizer_D, loss_D
+
+def get_loaders(train_dataset_name: str, 
+                val_dataset_name: str, 
+                augmented: bool,
+                augmentedType: str,
+                batch_size: int,
+                n_workers: int,
+                adversarial: bool) -> Tuple[DataLoader, DataLoader, int, int]:
+    """
+    Set up data loaders for training and validation datasets in semantic segmentation.
+
+    Args:
+    - train_dataset_name (str): Name of the training dataset ('CityScapes' or 'GTA5').
+    - val_dataset_name (str): Name of the validation dataset ('CityScapes').
+    - augmented (bool): Whether to use augmented data.
+    - augmentedType (str): Type of augmentation to apply (specific to your implementation).
+    - batch_size (int): Batch size for data loaders.
+    - n_workers (int): Number of workers for data loading.
+    - adversarial (bool): Whether to set up adversarial training data loaders.
+
+    Raises:
+    - ValueError: If an invalid train_dataset_name or val_dataset_name is provided.
+
+    Returns:
+    - Tuple containing:
+        - train_loader (DataLoader): DataLoader for the training dataset.
+        - val_loader (DataLoader): DataLoader for the validation dataset.
+        - data_height (int): Height of the dataset images.
+        - data_width (int): Width of the dataset images.
+    """
+
+    transform_cityscapes = A.Compose([
+        A.Resize(CITYSCAPES['height'], CITYSCAPES['width']),
+    ])
+    transform_gta5 = A.Compose([
+        A.Resize(GTA['height'], GTA['width'])
+    ])
+
+    train_loader = None
+    val_loader = None
+    data_height = None
+    data_width = None
+    
+    if augmented:
+        image_transform_gta5 = get_augmented_data(augmentedType)
+    
+    if adversarial:
+        source_dataset = GTA5(root_dir=GTA5_PATH, transform=transform_gta5)
+        target_dataset = CityScapes(root_dir=CITYSCAPES_PATH, split='train', transform=transform_cityscapes)
+
+        source_loader = DataLoader(source_dataset, batch_size=batch_size, shuffle=True, num_workers=n_workers)
+        target_loader = DataLoader(target_dataset, batch_size=batch_size, shuffle=True, num_workers=n_workers)
+
+        train_loader = zip(source_loader, cycle(target_loader))
+    else:
+        if train_dataset_name == 'CityScapes':
+            train_dataset = CityScapes(root_dir=CITYSCAPES_PATH, split='train', transform=transform_cityscapes)
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=n_workers)
+        elif train_dataset_name == 'GTA5':
+            train_dataset = GTA5(root_dir=GTA5_PATH, transform=transform_gta5)
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=n_workers)
+        else:
+            raise ValueError('Train datasets accepted: [CityScapes, GTA5]')
+        
+    if val_dataset_name == 'CityScapes':
+        val_dataset = CityScapes(root_dir=CITYSCAPES_PATH, split='val', transform=transform_cityscapes)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=n_workers)
+        data_height = CITYSCAPES['height']
+        data_width = CITYSCAPES['width']
+    else:
+        raise ValueError('Val datasets accepted: [CityScapes]')
+    
+    return train_loader, val_loader, data_height, data_width
+
+def adversarial_train_step(model: torch.nn.Module, 
+                           model_D: torch.nn.Module, 
+                           loss_fn: torch.nn.Module, 
+                           loss_D: torch.nn.Module, 
+                           optimizer: torch.optim.Optimizer, 
+                           optimizer_D: torch.optim.Optimizer, 
+                           train_loader: torch.utils.data.DataLoader, 
+                           device: str, 
+                           n_classes: int = 19)-> Tuple[float, float, float]:
+    """
+    Perform a single adversarial training step for semantic segmentation.
+
+    Args:
+    - model (torch.nn.Module): Segmentation model.
+    - model_D (torch.nn.Module): Discriminator model.
+    - loss_fn (torch.nn.Module): Segmentation loss function.
+    - loss_D (torch.nn.Module): Adversarial loss function for discriminator.
+    - optimizer (torch.optim.Optimizer): Optimizer for segmentation model.
+    - optimizer_D (torch.optim.Optimizer): Optimizer for discriminator model.
+    - train_loader (DataLoader): DataLoader for training data.
+    - device (str): Device on which to run the models ('cuda' or 'cpu').
+    - n_classes (int, optional): Number of classes for segmentation. Default is 19.
+
+    Returns:
+    - Tuple containing:
+        - epoch_loss (float): Average segmentation loss for the epoch.
+        - epoch_miou (float): Mean Intersection over Union (mIoU) for the epoch.
+        - epoch_iou (np.ndarray): Array of per-class IoU values for the epoch.
+    """
+
+    model_G = model.to(device)
+    optimizer_G = optimizer
+    ce_loss = loss_fn
+    bce_loss = loss_D
+    
+    interp_source = nn.Upsample(size=(GTA['height'], GTA['width']), mode='bilinear')
+    interp_target = nn.Upsample(size=(CITYSCAPES['height'], CITYSCAPES['width']), mode='bilinear')
+    
+    lambda_adv = 0.001
+    total_loss = 0
+    total_miou = 0
+    total_iou = np.zeros(n_classes)
+    
+    iterations = 0
+    
+    model_G.train()
+    model_D.train()
+    
+    for (source_data, source_labels), (target_data, _) in train_loader:
+
+            source_data, source_labels = source_data.to(device), source_labels.to(device)
+            target_data = target_data.to(device)
+            
+            optimizer_G.zero_grad()
+            optimizer_D.zero_grad()
+
+            #TRAIN GENERATOR
+            
+            #Train with source
+            for param in model_D.parameters():
+                param.requires_grad = False
+            
+            output_source = model_G(source_data)
+            output_source = interp_source(output_source) # apply upsample
+
+            segmentation_loss = ce_loss(output_source, source_labels)
+            segmentation_loss.backward()
+    
+            #Train with target
+            output_target = model_G(target_data)
+            output_target = interp_target(output_target) # apply upsample
+            
+            prediction_target = torch.nn.functional.softmax(output_target)
+            discriminator_output_target = model_D(prediction_target)
+            discriminator_label_source = torch.FloatTensor(discriminator_output_target.data.size()).fill_(0).cuda()
+            
+            adversarial_loss = bce_loss(discriminator_output_target, discriminator_label_source)
+            discriminator_loss = lambda_adv * adversarial_loss
+            discriminator_loss.backward()
+            
+            
+            #TRAIN DISCRIMINATOR
+            
+            #Train with source
+            for param in model_D.parameters():
+                param.requires_grad = True
+                
+            output_source = output_source.detach()
+            
+            prediction_source = torch.nn.functional.softmax(output_source)
+            discriminator_output_source = model_D(prediction_source)
+            discriminator_label_source = torch.FloatTensor(discriminator_output_source.data.size()).fill_(0).cuda()
+            discriminator_loss_source = bce_loss(discriminator_output_source, discriminator_label_source)
+            discriminator_loss_source.backward()
+
+            #Train with target
+            output_target = output_target.detach()
+            
+            prediction_target = torch.nn.functional.softmax(output_target)
+            discriminator_output_target = model_D(prediction_target)
+            discriminator_label_target = torch.FloatTensor(discriminator_output_target.data.size()).fill_(1).cuda()
+            
+            discriminator_loss_target = bce_loss(discriminator_output_target, discriminator_label_target)
+            discriminator_loss_target.backward()
+            
+            optimizer_G.step()
+            optimizer_D.step()
+            
+            iterations += 1
+            total_loss += segmentation_loss.item()
+            
+            prediction_source = torch.argmax(torch.softmax(output_source, dim=1), dim=1)
+            hist = fast_hist(source_labels.cpu().numpy(), prediction_source.cpu().numpy(), n_classes)
+            running_iou = np.array(per_class_iou(hist)).flatten()
+            total_miou += running_iou.sum()
+            total_iou += running_iou
+    
+    epoch_loss = total_loss / iterations
+    epoch_miou = total_miou / (iterations * n_classes)
+    epoch_iou = total_iou / iterations
+    
+    return epoch_loss, epoch_miou, epoch_iou
 
 def train_step(model: torch.nn.Module, 
-               model_name: str, 
                loss_fn: torch.nn.Module, 
                optimizer: torch.optim.Optimizer, 
                dataloader: torch.utils.data.DataLoader, 
                device: str, 
                n_classes: int = 19)-> Tuple[float, float, float]:
-    
-    """_summary_
+    """
+    Perform a single training step for semantic segmentation.
 
     Args:
-        model (torch.nn.Module): _description_
-        model_name (str): _description_
-        loss_fn (torch.nn.Module): _description_
-        optimizer (torch.optim.Optimizer): _description_
-        dataloader (torch.utils.data.DataLoader): _description_
-        device (str): _description_
-        n_classes (int, optional): _description_. Defaults to 19.
+    - model (torch.nn.Module): Segmentation model.
+    - loss_fn (torch.nn.Module): Loss function for segmentation.
+    - optimizer (torch.optim.Optimizer): Optimizer for training.
+    - dataloader (DataLoader): DataLoader for training data.
+    - device (str): Device on which to run the models ('cuda' or 'cpu').
+    - n_classes (int, optional): Number of classes for segmentation. Default is 19.
 
     Returns:
-        Tuple[float, float, float]: _description_
+    - Tuple containing:
+        - epoch_loss (float): Average segmentation loss for the epoch.
+        - epoch_miou (float): Mean Intersection over Union (mIoU) for the epoch.
+        - epoch_iou (np.ndarray): Array of per-class IoU values for the epoch.
     """
-
 
     total_loss = 0
     total_miou = 0
     total_iou = np.zeros(n_classes)
+    
     model.train()
     
     for image, label in dataloader:
         image, label = image.to(device), label.type(torch.LongTensor).to(device)
     
-        if model_name == 'bisenet':
-            output, sup1, sup2 = model(image) # DA CONTROLLARE
-            print(output.size())
-            print(output)
-            loss = loss_fn(output, label)
-        else: 
-            output = model(image)
-            loss = loss_fn(output, label)
+        output = model(image)
+        loss = loss_fn(output, label)
 
         # Backpropagation
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        
-        # Then clean the cache
-        torch.cuda.empty_cache()
-        # then collect the garbage
-        gc.collect()
-
         total_loss += loss.item()
         
-        _, predicted = output[0].max(1) # DA CONTROLLARE
-        print(predicted)
-        print(predicted.size())
-        
-        hist = fast_hist(predicted.cpu().numpy(), label.cpu().numpy(), n_classes)
+        prediction = torch.argmax(torch.softmax(output, dim=1), dim=1)
+
+        hist = fast_hist(label.cpu().numpy(), prediction.cpu().numpy(), n_classes)
         running_iou = np.array(per_class_iou(hist)).flatten()
         total_miou += running_iou.sum()
         total_iou += running_iou
@@ -86,36 +352,40 @@ def val_step(model: torch.nn.Module,
              dataloader: torch.utils.data.DataLoader, 
              device: str, 
              n_classes: int = 19) -> Tuple[float, float, float]:
-    
-    """_summary_
+    """
+    Perform a single validation step for semantic segmentation.
 
     Args:
-        model (torch.nn.Module): _description_
-        loss_fn (torch.nn.Module): _description_
-        dataloader (torch.utils.data.DataLoader): _description_
-        device (str): _description_
-        n_classes (int, optional): _description_. Defaults to 19.
+    - model (torch.nn.Module): Segmentation model.
+    - loss_fn (torch.nn.Module): Loss function for segmentation.
+    - dataloader (DataLoader): DataLoader for validation data.
+    - device (str): Device on which to run the models ('cuda' or 'cpu').
+    - n_classes (int, optional): Number of classes for segmentation. Default is 19.
 
     Returns:
-        Tuple[float, float, float]: _description_
+    - Tuple containing:
+        - epoch_loss (float): Average segmentation loss for the epoch.
+        - epoch_miou (float): Mean Intersection over Union (mIoU) for the epoch.
+        - epoch_iou (np.ndarray): Array of per-class IoU values for the epoch.
     """
     
     total_loss = 0
     total_miou = 0
     total_iou = np.zeros(n_classes)
+    
     model.eval()
 
     with torch.inference_mode(): # which is analogous to torch.no_grad
-        for image, label in enumerate(dataloader):
-            image, label = image.cuda(), label.type(torch.LongTensor).to(device)
+        for image, label in dataloader:
+            image, label = image.to(device), label.type(torch.LongTensor).to(device)
             
             output = model(image)
             loss = loss_fn(output, label)
             total_loss += loss.item()
             
-            _, predicted = output[0].max(1) # DA CONTROLLARE
+            prediction = torch.argmax(torch.softmax(output, dim=1), dim=1)
             
-            hist = fast_hist(predicted.cpu().numpy(), label.cpu().numpy(), n_classes)
+            hist = fast_hist(label.cpu().numpy(), prediction.cpu().numpy(), n_classes)
             running_iou = np.array(per_class_iou(hist)).flatten()
             total_miou += running_iou.sum()
             total_iou += running_iou
@@ -127,75 +397,95 @@ def val_step(model: torch.nn.Module,
     return epoch_loss, epoch_miou, epoch_iou
     
 def train(model: torch.nn.Module, 
-          model_name: str, 
+          model_D: torch.nn.Module, 
           optimizer: torch.optim.Optimizer, 
+          optimizer_D: torch.optim.Optimizer, 
           loss_fn: torch.nn.Module, 
-          train_loader: torch.utils.data.DataLoader, 
+          loss_D: torch.nn.Module, 
+          train_loader: torch.utils.data.DataLoader,  
           val_loader: torch.utils.data.DataLoader, 
           epochs: int, 
           device: str, 
           checkpoint_root: str,
-          step: str,
+          project_step: str,
           verbose: bool,
           n_classes: int = 19,
-          power: float = 0.9) -> Tuple[List[float],List[float],List[float],List[float],List[float],List[float]]:
-    
-    """_summary_
+          power: float = 0.9,
+          adversarial: bool = False) -> Tuple[List[float], List[float], List[float], List[float], List[float], List[float]]:
+    """
+    Train a semantic segmentation model with optional adversarial training.
 
     Args:
-        model (torch.nn.Module): _description_
-        model_name (str): _description_
-        optimizer (torch.optim.Optimizer): _description_
-        loss_fn (torch.nn.Module): _description_
-        train_loader (torch.utils.data.DataLoader): _description_
-        val_loader (torch.utils.data.DataLoader): _description_
-        epochs (int): _description_
-        device (str): _description_
-        checkpoint_root (str): _description_
-        step (str): _description_
-        verbose (int, optional): _description_. Defaults to 0.
-        n_classes (int, optional): _description_. Defaults to 19.
-        power (float, optional): _description_. Defaults to 0.9.
+        model (torch.nn.Module): Semantic segmentation model.
+        model_D (torch.nn.Module): Discriminator model for adversarial training.
+        optimizer (torch.optim.Optimizer): Optimizer for the segmentation model.
+        optimizer_D (torch.optim.Optimizer): Optimizer for the discriminator.
+        loss_fn (torch.nn.Module): Loss function for segmentation.
+        loss_D (torch.nn.Module): Loss function for adversarial training.
+        train_loader (torch.utils.data.DataLoader): DataLoader for training data.
+        val_loader (torch.utils.data.DataLoader): DataLoader for validation data.
+        epochs (int): Number of epochs to train.
+        device (str): Device on which to run computations ('cuda' or 'cpu').
+        checkpoint_root (str): Root directory to save checkpoints.
+        project_step (str): Name/id of the project or step.
+        verbose (bool): Whether to print verbose training statistics.
+        n_classes (int, optional): Number of classes for segmentation. Defaults to 19.
+        power (float, optional): Power parameter for learning rate scheduler. Defaults to 0.9.
+        adversarial (bool, optional): Whether to use adversarial training. Defaults to False.
 
     Returns:
-        Tuple[List[float],List[float],List[float],List[float],List[float],List[float]]: _description_
+        Tuple containing lists of:
+        - train_loss_list (List[float]): List of training losses per epoch.
+        - val_loss_list (List[float]): List of validation losses per epoch.
+        - train_miou_list (List[float]): List of training mIoU per epoch.
+        - val_miou_list (List[float]): List of validation mIoU per epoch.
+        - train_iou (List[float]): List of per-class IoU for training per epoch.
+        - val_iou (List[float]): List of per-class IoU for validation per epoch.
     """
     
-    
-    # CHECK THE INPUT VALUE BEFORE
-    
-    # Load last checkpoint
-    no_loading, start_epoch, train_loss_list, train_miou_list, train_iou, val_loss_list, val_miou_list, val_iou = load_checkpoint(checkpoint_root=checkpoint_root, step=step, model=model, optimizer=optimizer)
+    # Load or initialize checkpoint
+    no_checkpoint, start_epoch, train_loss_list, train_miou_list, train_iou, val_loss_list, val_miou_list, val_iou = load_checkpoint(checkpoint_root=checkpoint_root, project_step=project_step, model=model, model_D=model_D, optimizer=optimizer, optimizer_D=optimizer_D)
         
-    init_lr = optimizer.param_groups[0]['lr']
-    
-    if no_loading:
+    if no_checkpoint:
         train_loss_list, train_miou_list = [], []
         val_loss_list, val_miou_list = [], []
-        init_lr = optimizer.param_groups[0]['lr']
         start_epoch = 0
     
     for epoch in tqdm(range(start_epoch, epochs)):
         
-        train_loss, train_miou, train_iou = train_step(model, 
-                                                       model_name, 
-                                                       loss_fn, 
-                                                       optimizer, 
-                                                       train_loader, 
-                                                       device, 
-                                                       n_classes)
+        # Perform training step
+        if adversarial:
+            train_loss, train_miou, train_iou = adversarial_train_step(model,
+                                                                       model_D,
+                                                                       loss_fn, 
+                                                                       loss_D, 
+                                                                       optimizer, 
+                                                                       optimizer_D, 
+                                                                       train_loader, 
+                                                                       device, 
+                                                                       n_classes)
+        else:
+            train_loss, train_miou, train_iou = train_step(model, 
+                                                           loss_fn, 
+                                                           optimizer, 
+                                                           train_loader, 
+                                                           device, 
+                                                           n_classes)
         
+        # Perform validation step
         val_loss, val_miou, val_iou = val_step(model, 
                                                loss_fn, 
                                                val_loader,
                                                device, 
                                                n_classes)
         
+        # Append metrics to lists
         train_loss_list.append(train_loss) 
         train_miou_list.append(train_miou) 
         val_loss_list.append(val_loss)
         val_miou_list.append(val_miou)
 
+        # Print statistics if verbose
         print_stats(epoch=epoch, 
                     train_loss=train_loss,
                     val_loss=val_loss, 
@@ -203,161 +493,44 @@ def train(model: torch.nn.Module,
                     val_miou=val_miou, 
                     verbose=verbose)
 
-        poly_lr_scheduler(optimizer = optimizer,
-                          init_lr = init_lr,
-                          iter = epoch, 
-                          max_iter = epochs,
-                          power = power)
+        # Adjust learning rate
+        poly_lr_scheduler(optimizer=optimizer,
+                          init_lr=optimizer.param_groups[0]['lr'],
+                          iter=epoch, 
+                          max_iter=epochs,
+                          power=power)
+        if adversarial:
+            poly_lr_scheduler(optimizer=optimizer_D,
+                              init_lr=optimizer_D.param_groups[0]['lr'],
+                              iter=epoch, 
+                              max_iter=epochs,
+                              power=power)
         
-        # Save last checkpoint
-        save_checkpoint(checkpoint_root = checkpoint_root, 
-                        step=step,
-                        model = model, 
-                        optimizer = optimizer, 
-                        epoch = epoch,
-                        train_loss_list = train_loss_list, 
-                        train_miou_list = train_miou_list,
-                        train_iou = train_iou,
-                        val_loss_list = val_loss_list,
-                        val_miou_list = val_miou_list,
-                        val_iou = val_iou)
+        # Save checkpoint after each epoch
+        save_checkpoint(checkpoint_root=checkpoint_root, 
+                        project_step=project_step,
+                        model=model, 
+                        model_D=model_D,
+                        optimizer=optimizer, 
+                        optimizer_D=optimizer_D, 
+                        epoch=epoch,
+                        train_loss_list=train_loss_list, 
+                        train_miou_list=train_miou_list,
+                        train_iou=train_iou,
+                        val_loss_list=val_loss_list,
+                        val_miou_list=val_miou_list,
+                        val_iou=val_iou,
+                        verbose=verbose)
         
-    return train_loss_list, train_miou_list, train_iou, val_loss_list, val_miou_list, val_iou
-
-def get_core(model_name, 
-             n_classes,
-             device,
-             parallelize,
-             optimizer_name, 
-             lr,
-             momentum,
-             weight_decay,
-             loss_fn_name,
-             ignore_index)->Tuple[torch.nn.Module, torch.optim.Optimizer, torch.nn.Module]:
-    
-    """_summary_
-
-    Args:
-        model_name (_type_): _description_
-        n_classes (_type_): _description_
-        device (_type_): _description_
-        parallelize (_type_): _description_
-        optimizer_name (_type_): _description_
-        lr (_type_): _description_
-        momentum (_type_): _description_
-        weight_decay (_type_): _description_
-        loss_fn_name (_type_): _description_
-        ignore_index (_type_): _description_
-
-    Returns:
-        Tuple[torch.nn.Module, torch.optim.Optimizer, torch.nn.Module]: _description_
-    """
-    
-    if model_name == 'DeepLabV2':
-        model = get_deeplab_v2(num_classes=n_classes, pretrain=True, pretrain_model_path=DEEPLABV2_PATH).to(device)
-        if parallelize and device == 'cuda' and torch.cuda.device_count() > 1:
-            model = torch.nn.DataParallel(model).to(device)
-    elif model_name == 'BiSeNet':
-        model = BiSeNet(num_classes=n_classes, context_path="resnet18").to(device)
-        if parallelize and device == 'cuda' and torch.cuda.device_count() > 1:
-            model = torch.nn.DataParallel(model).to(device)
-    else:
-        print('Model accepted: [DeepLabV2, BiSeNet]')
-            
-    if optimizer_name == 'Adam':
-        optimizer = torch.optim.Adam(model.parameters(), 
-                                     lr=lr)
-    elif optimizer_name == 'SGD':
-        optimizer = torch.optim.SGD(model.parameters(), 
-                                    lr=lr, 
-                                    momentum=momentum, 
-                                    weight_decay=weight_decay)
-    else:
-        print('Optimizer accepted: [Adam, SGD]')
-        
-    if loss_fn_name == 'CrossEntropyLoss':
-        loss_fn = torch.nn.CrossEntropyLoss(ignore_index=ignore_index)
-    else:
-        print('Loss function accepted: [CrossEntropyLoss]')
-        
-    return model, optimizer, loss_fn
-
-def get_loaders(train_dataset_name, 
-                val_dataset_name, 
-                augumented,
-                augumentedType,
-                batch_size,
-                n_workers)-> Tuple[DataLoader,DataLoader,int,int]:
-    
-    """_summary_
-
-    Args:
-        train_dataset_name (_type_): _description_
-        val_dataset_name (_type_): _description_
-        augumented (_type_): _description_
-        augumentedType (_type_): _description_
-        batch_size (_type_): _description_
-        n_workers (_type_): _description_
-
-    Returns:
-        Tuple[DataLoader,DataLoader,int,int]: _description_
-    """
-
-    transform_cityscapes = A.Compose([
-        A.Resize(CITYSCAPES['height'],CITYSCAPES['width']),
-    ])
-    transform_gta5 = A.Compose([
-        A.Resize(GTA['height'],GTA['width'])
-    ])
-    
-    
-    if augumented:
-        image_transform_gta5 = get_augmented_data(augumentedType)
-    
-    if train_dataset_name == 'CityScapes':
-        train_dataset = CityScapes(root_dir=CITYSCAPES_PATH, 
-                                   split='train', 
-                                   transform=transform_cityscapes)
-        
-        train_loader = DataLoader(train_dataset, 
-                                  batch_size=batch_size, 
-                                  shuffle=True, 
-                                  num_workers=n_workers)
-    elif train_dataset_name == 'GTA5':
-        train_dataset = GTA5(root_dir=GTA5_PATH, 
-                             transform=transform_gta5)
-        
-        train_loader = DataLoader(train_dataset, 
-                                  batch_size=batch_size, 
-                                  shuffle=True, 
-                                  num_workers=n_workers)
-    else:
-        print('Train datasets accepted: [CityScapes, GTA5]')
-        
-    if val_dataset_name == 'CityScapes':
-        val_dataset = CityScapes(root_dir=CITYSCAPES_PATH, 
-                                 split='val', 
-                                 transform=transform_cityscapes)
-        
-        val_loader = DataLoader(val_dataset, 
-                                batch_size=batch_size, 
-                                shuffle=False, 
-                                num_workers=n_workers)
-        
-        data_height = CITYSCAPES['height']
-        data_width = CITYSCAPES['width']
-    else:
-        print('Val datasets accepted: [CityScapes]')
-    
-    return train_loader, val_loader, data_height, data_width
+    return train_loss_list, val_loss_list, train_miou_list, val_miou_list, train_iou, val_iou
     
 def pipeline (model_name: str, 
               train_dataset_name: str, 
               val_dataset_name: str,
               n_classes:int,
               epochs: int,
-              augumented: bool,
-              augumentedType:str,
+              augmented: bool,
+              augmentedType:str,
               optimizer_name: str,
               lr:float,
               momentum:float,
@@ -373,60 +546,68 @@ def pipeline (model_name: str,
               checkpoint_root:str,
               power:float,
               evalIterations:int,
-              ignore_model_measurements:bool,
-              ):
-    
-    """_summary_
+              adversarial:bool
+              )->None:
+    """
+    Main pipeline function to orchestrate the training and evaluation of a deep learning model.
 
     Args:
-        model_name (str): _description_
-        train_dataset_name (str): _description_
-        val_dataset_name (str): _description_
-        n_classes (int): _description_
-        epochs (int): _description_
-        augumented (bool): _description_
-        augumentedType (str): _description_
-        optimizer_name (str): _description_
-        lr (float): _description_
-        momentum (float): _description_
-        weight_decay (float): _description_
-        loss_fn_name (str): _description_
-        ignore_index (int): _description_
-        batch_size (int): _description_
-        n_workers (int): _description_
-        device (str): _description_
-        parallelize (bool): _description_
-        project_step (str): _description_
-        verbose (bool): _description_
-        checkpoint_root (str): _description_
-        power (float): _description_
-        evalIterations (int): _description_
-        ignore_model_measurements (bool): _description_
+        model_name (str): Name of the deep learning model architecture.
+        train_dataset_name (str): Name of the training dataset.
+        val_dataset_name (str): Name of the validation dataset.
+        n_classes (int): Number of classes in the dataset.
+        epochs (int): Number of epochs for training.
+        augmented (bool): Whether to use data augmentation during training.
+        augmentedType (str): Type of data augmentation to apply.
+        optimizer_name (str): Name of the optimizer to use.
+        lr (float): Learning rate for the optimizer.
+        momentum (float): Momentum factor for optimizers like SGD.
+        weight_decay (float): Weight decay (L2 penalty) for the optimizer.
+        loss_fn_name (str): Name of the loss function.
+        ignore_index (int): Index to ignore in the loss function (e.g., for padding).
+        batch_size (int): Batch size for training and validation data loaders.
+        n_workers (int): Number of workers for data loading.
+        device (str): Device to run the model on ('cuda' or 'cpu').
+        parallelize (bool): Whether to use GPU parallelization.
+        project_step (str): Name or identifier of the current project step or experiment.
+        verbose (bool): Whether to print detailed logs during training.
+        checkpoint_root (str): Root directory to save checkpoints and results.
+        power (float): Power parameter for polynomial learning rate scheduler.
+        evalIterations (int): Number of iterations for evaluating model latency and FPS.
+        adversarial (bool): Whether to use adversarial training.
+
+    Returns:
+        None
     """
     
+    
     # get model
-    model, optimizer, loss_fn = get_core(model_name, 
-                                         n_classes,
-                                         device,
-                                         parallelize,
-                                         optimizer_name, 
-                                         lr,
-                                         momentum,
-                                         weight_decay,
-                                         loss_fn_name,
-                                         ignore_index)
+    model, optimizer, loss_fn, model_D, optimizer_D, loss_D = get_core(model_name, 
+                                                                       n_classes,
+                                                                       device,
+                                                                       parallelize,
+                                                                       optimizer_name, 
+                                                                       lr,
+                                                                       momentum,
+                                                                       weight_decay,
+                                                                       loss_fn_name,
+                                                                       ignore_index,
+                                                                       adversarial)
     # get loader
     train_loader, val_loader, data_height, data_width = get_loaders(train_dataset_name, 
                                                                     val_dataset_name, 
-                                                                    augumented,
-                                                                    augumentedType,
+                                                                    augmented,
+                                                                    augmentedType,
                                                                     batch_size,
-                                                                    n_workers)
+                                                                    n_workers,
+                                                                    adversarial)
     # train
-    model_results = train(model=model, 
-                          model_name=model_name,
+    model_results = train(model=model,
+                          model_D = model_D,
                           optimizer=optimizer, 
-                          loss_fn=loss_fn, 
+                          optimizer_D = optimizer_D,
+                          loss_fn = loss_fn, 
+                          loss_D = loss_D,
                           train_loader=train_loader, 
                           val_loader=val_loader, 
                           epochs=epochs, 
@@ -435,12 +616,13 @@ def pipeline (model_name: str,
                           project_step=project_step,
                           verbose=verbose,
                           n_classes=n_classes,
-                          power=power)
+                          power=power,
+                          adversarial=adversarial)
     
     # evaluation
     model_params_flops = compute_flops(model=model, 
-                               height=data_height, 
-                               width=data_width)
+                                       height=data_height, 
+                                       width=data_width)
     
     model_latency_fps = compute_latency_and_fps(model=model,
                                                 height=data_height, 
@@ -467,18 +649,14 @@ def pipeline (model_name: str,
              train_dataset_name, 
              val_dataset_name)
     
-    # save
-    save_results(model, 
-                 model_results, 
+    # save results
+    save_results(model_results, 
                  filename=f"{model_name}_metrics_{project_step}", 
+                 project_step=project_step,
                  height=data_height, 
                  width=data_width, 
                  iterations=evalIterations,
                  model_params_flops=model_params_flops,
                  model_latency_fps=model_latency_fps,
-                 ignore_model_measurements=ignore_model_measurements,
                  device=device)
-    
-    torch.save(model.state_dict(), f"./checkpoints/{model_name}_{project_step}.pth")
-
 

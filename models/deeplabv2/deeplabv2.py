@@ -125,8 +125,8 @@ class ResNetMulti(nn.Module):
 
         x = torch.nn.functional.interpolate(x, size=(H, W), mode='bilinear')
 
-        if self.training == True:
-            return x, None, None
+        #if self.training == True:
+        #    return x, None, None
 
         return x
 

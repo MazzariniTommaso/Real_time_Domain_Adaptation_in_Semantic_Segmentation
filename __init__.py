@@ -29,9 +29,10 @@ config = {
     'ignore_model_measurements': False,           
 }
 
-CITYSCAPES_PATH = 'data/Cityscapes/Cityspaces'
-GTA5_PATH = 'data/GTA5'
-DEEPLABV2_PATH = 'models/deeplab_resnet_pretrained_imagenet.pth'
+CITYSCAPES_PATH = 'kaggle_directory_for_Cityscapes'
+GTA5_PATH = 'kaggle_directory_for_GTA5_without_masks'
+GTA5_PATH_WITH_MASK = 'kaggle_directory_for_GTA5_with_masks'
+DEEPLABV2_PATH = 'kaggle_directory_for_pretrained_deeplab'
 CITYSCAPES = {
     'width': 1024, 
     'height': 512
@@ -44,7 +45,7 @@ GTA = {
 """
 
 if __name__ == '__main__':
-    
+
     """
     # for kaggle:
     pipeline(
@@ -70,7 +71,7 @@ if __name__ == '__main__':
         checkpoint_root=config['checkpoint_root'],
         power=config['power'],
         evalIterations=config['evalIterations'],
-        ignore_model_measurements=config['ignore_model_measurements']
+        adversarial=config['adversarial']
     )
     """
     
