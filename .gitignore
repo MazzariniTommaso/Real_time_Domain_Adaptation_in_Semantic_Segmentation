@@ -1,7 +1,6 @@
 data/GTA5
 data/Cityscapes
 data/GTA5_with_mask
-maskGTA5.ipynb
 models/deeplab_resnet_pretrained_imagenet.pth
 __pycache__
 checkpoints
