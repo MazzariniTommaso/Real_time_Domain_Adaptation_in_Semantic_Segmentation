@@ -221,72 +221,72 @@ def adversarial_train_step(model: torch.nn.Module,
     
     for (source_data, source_labels), (target_data, _) in train_loader:
 
-            source_data, source_labels = source_data.to(device), source_labels.to(device)
-            target_data = target_data.to(device)
-            
-            optimizer_G.zero_grad()
-            optimizer_D.zero_grad()
+        source_data, source_labels = source_data.to(device), source_labels.to(device)
+        target_data = target_data.to(device)
+        
+        optimizer_G.zero_grad()
+        optimizer_D.zero_grad()
 
-            #TRAIN GENERATOR
-            
-            #Train with source
-            for param in model_D.parameters():
-                param.requires_grad = False
-            
-            output_source = model_G(source_data)
-            output_source = interp_source(output_source) # apply upsample
+        #TRAIN GENERATOR
+        
+        #Train with source
+        for param in model_D.parameters():
+            param.requires_grad = False
+        
+        output_source = model_G(source_data)
+        output_source = interp_source(output_source) # apply upsample
 
-            segmentation_loss = ce_loss(output_source, source_labels)
-            segmentation_loss.backward()
-    
-            #Train with target
-            output_target = model_G(target_data)
-            output_target = interp_target(output_target) # apply upsample
-            
-            prediction_target = torch.nn.functional.softmax(output_target)
-            discriminator_output_target = model_D(prediction_target)
-            discriminator_label_source = torch.FloatTensor(discriminator_output_target.data.size()).fill_(0).cuda()
-            
-            adversarial_loss = bce_loss(discriminator_output_target, discriminator_label_source)
-            discriminator_loss = lambda_adv * adversarial_loss
-            discriminator_loss.backward()
-            
-            
-            #TRAIN DISCRIMINATOR
-            
-            #Train with source
-            for param in model_D.parameters():
-                param.requires_grad = True
-                
-            output_source = output_source.detach()
-            
-            prediction_source = torch.nn.functional.softmax(output_source)
-            discriminator_output_source = model_D(prediction_source)
-            discriminator_label_source = torch.FloatTensor(discriminator_output_source.data.size()).fill_(0).cuda()
-            discriminator_loss_source = bce_loss(discriminator_output_source, discriminator_label_source)
-            discriminator_loss_source.backward()
+        segmentation_loss = ce_loss(output_source, source_labels)
+        segmentation_loss.backward()
 
-            #Train with target
-            output_target = output_target.detach()
+        #Train with target
+        output_target = model_G(target_data)
+        output_target = interp_target(output_target) # apply upsample
+        
+        prediction_target = torch.nn.functional.softmax(output_target)
+        discriminator_output_target = model_D(prediction_target)
+        discriminator_label_source = torch.FloatTensor(discriminator_output_target.data.size()).fill_(0).cuda()
+        
+        adversarial_loss = bce_loss(discriminator_output_target, discriminator_label_source)
+        discriminator_loss = lambda_adv * adversarial_loss
+        discriminator_loss.backward()
+        
+        
+        #TRAIN DISCRIMINATOR
+        
+        #Train with source
+        for param in model_D.parameters():
+            param.requires_grad = True
             
-            prediction_target = torch.nn.functional.softmax(output_target)
-            discriminator_output_target = model_D(prediction_target)
-            discriminator_label_target = torch.FloatTensor(discriminator_output_target.data.size()).fill_(1).cuda()
-            
-            discriminator_loss_target = bce_loss(discriminator_output_target, discriminator_label_target)
-            discriminator_loss_target.backward()
-            
-            optimizer_G.step()
-            optimizer_D.step()
-            
-            iterations += 1
-            total_loss += segmentation_loss.item()
-            
-            prediction_source = torch.argmax(torch.softmax(output_source, dim=1), dim=1)
-            hist = fast_hist(source_labels.cpu().numpy(), prediction_source.cpu().numpy(), n_classes)
-            running_iou = np.array(per_class_iou(hist)).flatten()
-            total_miou += running_iou.sum()
-            total_iou += running_iou
+        output_source = output_source.detach()
+        
+        prediction_source = torch.nn.functional.softmax(output_source)
+        discriminator_output_source = model_D(prediction_source)
+        discriminator_label_source = torch.FloatTensor(discriminator_output_source.data.size()).fill_(0).cuda()
+        discriminator_loss_source = bce_loss(discriminator_output_source, discriminator_label_source)
+        discriminator_loss_source.backward()
+
+        #Train with target
+        output_target = output_target.detach()
+        
+        prediction_target = torch.nn.functional.softmax(output_target)
+        discriminator_output_target = model_D(prediction_target)
+        discriminator_label_target = torch.FloatTensor(discriminator_output_target.data.size()).fill_(1).cuda()
+        
+        discriminator_loss_target = bce_loss(discriminator_output_target, discriminator_label_target)
+        discriminator_loss_target.backward()
+        
+        optimizer_G.step()
+        optimizer_D.step()
+        
+        iterations += 1
+        total_loss += segmentation_loss.item()
+        
+        prediction_source = torch.argmax(torch.softmax(output_source, dim=1), dim=1)
+        hist = fast_hist(source_labels.cpu().numpy(), prediction_source.cpu().numpy(), n_classes)
+        running_iou = np.array(per_class_iou(hist)).flatten()
+        total_miou += running_iou.sum()
+        total_iou += running_iou
     
     epoch_loss = total_loss / iterations
     epoch_miou = total_miou / (iterations * n_classes)
