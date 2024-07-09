@@ -125,7 +125,8 @@ def get_augmented_data(augmentedType: str) -> A.Compose:
         'transform3': A.Compose([
             A.Resize(GTA['height'], GTA['width']),
             A.HorizontalFlip(p=0.5),
-            A.GaussianBlur(p=0.5)
+            A.GaussianBlur(p=0.5),
+            A.ColorJitter(p=0.5)
         ]),
         'transform4': A.Compose([
             A.Resize(GTA['height'], GTA['width']),
