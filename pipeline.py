@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 import albumentations as A
 from tqdm import tqdm
 from itertools import cycle
-from typing import Tuple, List
+from typing import Tuple, List, Union
 from config import CITYSCAPES, GTA, DEEPLABV2_PATH, CITYSCAPES_PATH, GTA5_PATH
 from datasets import CityScapes, GTA5
 from models import BiSeNet, get_deeplab_v2, FCDiscriminator
@@ -104,7 +104,7 @@ def get_loaders(train_dataset_name: str,
                 augmentedType: str,
                 batch_size: int,
                 n_workers: int,
-                adversarial: bool) -> Tuple[DataLoader, DataLoader, int, int]:
+                adversarial: bool) -> Tuple[Union[DataLoader, Tuple[DataLoader, DataLoader]], DataLoader, int, int]:
     """
     Set up data loaders for training and validation datasets in semantic segmentation.
 
@@ -122,7 +122,7 @@ def get_loaders(train_dataset_name: str,
 
     Returns:
     - Tuple containing:
-        - train_loader (DataLoader): DataLoader for the training dataset.
+        - train_loader (Union[DataLoader, Tuple[DataLoader, DataLoader]]): DataLoader(s) for the training dataset.
         - val_loader (DataLoader): DataLoader for the validation dataset.
         - data_height (int): Height of the dataset images.
         - data_width (int): Width of the dataset images.
@@ -141,7 +141,7 @@ def get_loaders(train_dataset_name: str,
     data_width = None
     
     if augmented:
-        image_transform_gta5 = get_augmented_data(augmentedType)
+        transform_gta5 = get_augmented_data(augmentedType)
     
     if adversarial:
         source_dataset = GTA5(root_dir=GTA5_PATH, transform=transform_gta5)
@@ -150,7 +150,7 @@ def get_loaders(train_dataset_name: str,
         source_loader = DataLoader(source_dataset, batch_size=batch_size, shuffle=True, num_workers=n_workers)
         target_loader = DataLoader(target_dataset, batch_size=batch_size, shuffle=True, num_workers=n_workers)
 
-        train_loader = zip(source_loader, cycle(target_loader))
+        train_loader = (source_loader, target_loader)
     else:
         if train_dataset_name == 'CityScapes':
             train_dataset = CityScapes(root_dir=CITYSCAPES_PATH, split='train', transform=transform_cityscapes)
@@ -177,7 +177,7 @@ def adversarial_train_step(model: torch.nn.Module,
                            loss_D: torch.nn.Module, 
                            optimizer: torch.optim.Optimizer, 
                            optimizer_D: torch.optim.Optimizer, 
-                           train_loader: torch.utils.data.DataLoader, 
+                           loaders: Tuple[DataLoader,DataLoader], 
                            device: str, 
                            n_classes: int = 19)-> Tuple[float, float, float]:
     """
@@ -190,7 +190,7 @@ def adversarial_train_step(model: torch.nn.Module,
     - loss_D (torch.nn.Module): Adversarial loss function for discriminator.
     - optimizer (torch.optim.Optimizer): Optimizer for segmentation model.
     - optimizer_D (torch.optim.Optimizer): Optimizer for discriminator model.
-    - train_loader (DataLoader): DataLoader for training data.
+    - loaders (Tuple[DataLoader,DataLoader]): Source and target dataloaders for training data.
     - device (str): Device on which to run the models ('cuda' or 'cpu').
     - n_classes (int, optional): Number of classes for segmentation. Default is 19.
 
@@ -219,7 +219,13 @@ def adversarial_train_step(model: torch.nn.Module,
     model_G.train()
     model_D.train()
     
+    source_loader, target_loader = loaders
+    train_loader = zip(source_loader, cycle(target_loader))
+    
+    
     for (source_data, source_labels), (target_data, _) in train_loader:
+        
+        iterations+=1
 
         source_data, source_labels = source_data.to(device), source_labels.to(device)
         target_data = target_data.to(device)
@@ -279,7 +285,6 @@ def adversarial_train_step(model: torch.nn.Module,
         optimizer_G.step()
         optimizer_D.step()
         
-        iterations += 1
         total_loss += segmentation_loss.item()
         
         prediction_source = torch.argmax(torch.softmax(output_source, dim=1), dim=1)
@@ -287,7 +292,8 @@ def adversarial_train_step(model: torch.nn.Module,
         running_iou = np.array(per_class_iou(hist)).flatten()
         total_miou += running_iou.sum()
         total_iou += running_iou
-    
+
+        
     epoch_loss = total_loss / iterations
     epoch_miou = total_miou / (iterations * n_classes)
     epoch_iou = total_iou / iterations
@@ -297,7 +303,7 @@ def adversarial_train_step(model: torch.nn.Module,
 def train_step(model: torch.nn.Module, 
                loss_fn: torch.nn.Module, 
                optimizer: torch.optim.Optimizer, 
-               dataloader: torch.utils.data.DataLoader, 
+               dataloader: DataLoader, 
                device: str, 
                n_classes: int = 19)-> Tuple[float, float, float]:
     """
@@ -351,7 +357,7 @@ def train_step(model: torch.nn.Module,
 
 def val_step(model: torch.nn.Module,  
              loss_fn: torch.nn.Module, 
-             dataloader: torch.utils.data.DataLoader, 
+             dataloader: DataLoader, 
              device: str, 
              n_classes: int = 19) -> Tuple[float, float, float]:
     """
@@ -404,8 +410,8 @@ def train(model: torch.nn.Module,
           optimizer_D: torch.optim.Optimizer, 
           loss_fn: torch.nn.Module, 
           loss_D: torch.nn.Module, 
-          train_loader: torch.utils.data.DataLoader,  
-          val_loader: torch.utils.data.DataLoader, 
+          train_loader: Union[DataLoader, Tuple[DataLoader,DataLoader]],  
+          val_loader: DataLoader, 
           epochs: int, 
           device: str, 
           checkpoint_root: str,
@@ -424,8 +430,8 @@ def train(model: torch.nn.Module,
         optimizer_D (torch.optim.Optimizer): Optimizer for the discriminator.
         loss_fn (torch.nn.Module): Loss function for segmentation.
         loss_D (torch.nn.Module): Loss function for adversarial training.
-        train_loader (torch.utils.data.DataLoader): DataLoader for training data.
-        val_loader (torch.utils.data.DataLoader): DataLoader for validation data.
+        train_loader (Union[DataLoader, Tuple[DataLoader,DataLoader]]): DataLoader(s) for the training dataset.
+        val_loader (DataLoader): DataLoader for validation data.
         epochs (int): Number of epochs to train.
         device (str): Device on which to run computations ('cuda' or 'cpu').
         checkpoint_root (str): Root directory to save checkpoints.
@@ -446,7 +452,7 @@ def train(model: torch.nn.Module,
     """
     
     # Load or initialize checkpoint
-    no_checkpoint, start_epoch, train_loss_list, train_miou_list, train_iou, val_loss_list, val_miou_list, val_iou = load_checkpoint(checkpoint_root=checkpoint_root, project_step=project_step, model=model, model_D=model_D, optimizer=optimizer, optimizer_D=optimizer_D)
+    no_checkpoint, start_epoch, train_loss_list, train_miou_list, train_iou, val_loss_list, val_miou_list, val_iou = load_checkpoint(checkpoint_root=checkpoint_root, project_step=project_step, adversarial=adversarial, model=model, model_D=model_D, optimizer=optimizer, optimizer_D=optimizer_D)
         
     if no_checkpoint:
         train_loss_list, train_miou_list = [], []
@@ -457,29 +463,29 @@ def train(model: torch.nn.Module,
         
         # Perform training step
         if adversarial:
-            train_loss, train_miou, train_iou = adversarial_train_step(model,
-                                                                       model_D,
-                                                                       loss_fn, 
-                                                                       loss_D, 
-                                                                       optimizer, 
-                                                                       optimizer_D, 
-                                                                       train_loader, 
-                                                                       device, 
-                                                                       n_classes)
+            train_loss, train_miou, train_iou = adversarial_train_step(model=model,
+                                                                       model_D=model_D,
+                                                                       loss_fn=loss_fn, 
+                                                                       loss_D=loss_D, 
+                                                                       optimizer=optimizer, 
+                                                                       optimizer_D=optimizer_D, 
+                                                                       loaders=train_loader, 
+                                                                       device=device, 
+                                                                       n_classes=n_classes)
         else:
-            train_loss, train_miou, train_iou = train_step(model, 
-                                                           loss_fn, 
-                                                           optimizer, 
-                                                           train_loader, 
-                                                           device, 
-                                                           n_classes)
+            train_loss, train_miou, train_iou = train_step(model=model, 
+                                                           loss_fn=loss_fn, 
+                                                           optimizer=optimizer, 
+                                                           train_loader=train_loader, 
+                                                           device=device, 
+                                                           n_classes=n_classes)
         
         # Perform validation step
-        val_loss, val_miou, val_iou = val_step(model, 
-                                               loss_fn, 
-                                               val_loader,
-                                               device, 
-                                               n_classes)
+        val_loss, val_miou, val_iou = val_step(model=model, 
+                                               loss_fn=loss_fn, 
+                                               val_loader=val_loader,
+                                               device=device, 
+                                               n_classes=n_classes)
         
         # Append metrics to lists
         train_loss_list.append(train_loss) 
@@ -511,6 +517,7 @@ def train(model: torch.nn.Module,
         # Save checkpoint after each epoch
         save_checkpoint(checkpoint_root=checkpoint_root, 
                         project_step=project_step,
+                        adversarial=adversarial,
                         model=model, 
                         model_D=model_D,
                         optimizer=optimizer, 
@@ -655,10 +662,5 @@ def pipeline (model_name: str,
     save_results(model_results, 
                  filename=f"{model_name}_metrics_{project_step}", 
                  project_step=project_step,
-                 height=data_height, 
-                 width=data_width, 
-                 iterations=evalIterations,
                  model_params_flops=model_params_flops,
-                 model_latency_fps=model_latency_fps,
-                 device=device)
-
+                 model_latency_fps=model_latency_fps)

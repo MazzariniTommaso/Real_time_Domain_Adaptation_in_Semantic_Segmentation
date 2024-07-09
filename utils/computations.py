@@ -42,7 +42,7 @@ def compute_latency_and_fps(model: torch.nn.Module,
                             height: int = 512, 
                             width: int = 1024, 
                             iterations: int = 1000, 
-                            device: str = 'cuda') -> Tuple[float, float, float, float]:
+                            device: str = 'cuda') ->  Dict[str, float]:
     """
     Computes the mean latency, standard deviation of latency, mean FPS, and standard deviation of FPS for a given model.
 
@@ -54,7 +54,7 @@ def compute_latency_and_fps(model: torch.nn.Module,
         device (str, optional): Device to run inference ('cpu' or 'cuda'). Defaults to 'cuda'.
 
     Returns:
-        Tuple[float, float, float, float]: A tuple containing mean latency, std latency, mean FPS, and std FPS.
+        Dict[str, float]: Dictionary containing model latency and FPS information.
     """
     
     latencies = []
@@ -91,5 +91,8 @@ def compute_latency_and_fps(model: torch.nn.Module,
     # Calculate mean and standard deviation of FPS
     mean_fps = np.mean(fps_records)
     std_fps = np.std(fps_records)
-    
-    return mean_latency, std_latency, mean_fps, std_fps
+
+    return {'mean_latency': mean_latency,
+            'std_latency': std_latency,
+            'mean_fps': mean_fps,
+            'std_fps':std_fps}

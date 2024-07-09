@@ -79,7 +79,7 @@ def plot_loss(model_results:list,
     else:
         os.makedirs(checkpoint_path)
         fig.savefig(f"{checkpoint_path}/{model_name}_{project_step}_loss.png", format='png')
-     
+    
 def plot_miou(model_results:list, 
               model_name:str, 
               project_step:str, 

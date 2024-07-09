@@ -26,10 +26,10 @@ def save_results(model_results: List[List[float]],
             - 'Parameters': Number of parameters.
             - 'FLOPS': Floating Point Operations per Second.
         model_latency_fps (Dict[str, float]): Dictionary containing model latency and FPS information.
-            - 'Latency_mean': Mean latency.
-            - 'Latency_std': Standard deviation of latency.
-            - 'FPS_mean': Mean FPS.
-            - 'FPS_std': Standard deviation of FPS.
+            - 'mean_latency': Mean latency.
+            - 'std_latency': Standard deviation of latency.
+            - 'mean_fps': Mean FPS.
+            - 'std_fps': Standard deviation of FPS.
     """
     
     # Construct the checkpoint path
@@ -47,13 +47,13 @@ def save_results(model_results: List[List[float]],
         
         # Write latency information
         file.write("Latency:\n")
-        file.write(f"\tmean: {model_latency_fps['Latency_mean']}\n")
-        file.write(f"\tstd: {model_latency_fps['Latency_std']}\n")
+        file.write(f"\tmean: {model_latency_fps['mean_latency']}\n")
+        file.write(f"\tstd: {model_latency_fps['std_latency']}\n")
         
         # Write FPS information
         file.write("FPS:\n")
-        file.write(f"\tmean: {model_latency_fps['FPS_mean']}\n")
-        file.write(f"\tstd: {model_latency_fps['FPS_std']}\n")
+        file.write(f"\tmean: {model_latency_fps['mean_fps']}\n")
+        file.write(f"\tstd: {model_latency_fps['std_fps']}\n")
         
         # Write loss information
         file.write("Loss:\n")
@@ -77,6 +77,7 @@ def save_results(model_results: List[List[float]],
             
 def save_checkpoint(checkpoint_root: str,
                     project_step: str, 
+                    adversarial: bool,
                     model: torch.nn.Module, 
                     model_D: torch.nn.Module, 
                     optimizer: torch.optim.Optimizer, 
@@ -95,6 +96,7 @@ def save_checkpoint(checkpoint_root: str,
     Args:
         checkpoint_root (str): The root directory where the checkpoint will be saved.
         project_step (str): The current project step or phase, used for naming the checkpoint file.
+        adversarial (bool): Whether to use adversarial training.
         model (torch.nn.Module): The main model whose state is to be saved.
         model_D (torch.nn.Module): The auxiliary or discriminator model whose state is to be saved.
         optimizer (torch.optim.Optimizer): The optimizer for the main model.
@@ -115,19 +117,32 @@ def save_checkpoint(checkpoint_root: str,
     checkpoint_path = f'{checkpoint_root}/{project_step}/checkpoint.pth'
     
     # Save the state of the training process, including model parameters, optimizers, and performance metrics
-    torch.save({
-        'model': model.state_dict(),
-        'model_D': model_D.state_dict(),
-        'optimizer': optimizer.state_dict(),
-        'optimizer_D': optimizer_D.state_dict(),
-        'epoch': epoch + 1,
-        'train_loss_list': train_loss_list,
-        'train_miou_list': train_miou_list,
-        'train_iou': train_iou,
-        'val_loss_list': val_loss_list,
-        'val_miou_list': val_miou_list,
-        'val_iou': val_iou
-    }, checkpoint_path)
+    if adversarial:
+        torch.save({
+            'model': model.state_dict(),
+            'model_D': model_D.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            'optimizer_D': optimizer_D.state_dict(),
+            'epoch': epoch + 1,
+            'train_loss_list': train_loss_list,
+            'train_miou_list': train_miou_list,
+            'train_iou': train_iou,
+            'val_loss_list': val_loss_list,
+            'val_miou_list': val_miou_list,
+            'val_iou': val_iou
+        }, checkpoint_path)
+    else:
+        torch.save({
+            'model': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            'epoch': epoch + 1,
+            'train_loss_list': train_loss_list,
+            'train_miou_list': train_miou_list,
+            'train_iou': train_iou,
+            'val_loss_list': val_loss_list,
+            'val_miou_list': val_miou_list,
+            'val_iou': val_iou
+        }, checkpoint_path)
     
     # If verbose is True, print a confirmation message
     if verbose == True:
@@ -135,6 +150,7 @@ def save_checkpoint(checkpoint_root: str,
     
 def load_checkpoint(checkpoint_root: str,
                     project_step: str, 
+                    adversarial: bool,
                     model: torch.nn.Module, 
                     model_D: torch.nn.Module,
                     optimizer: torch.optim.Optimizer,
@@ -145,6 +161,7 @@ def load_checkpoint(checkpoint_root: str,
     Args:
         checkpoint_root (str): The root directory where the checkpoint is stored.
         project_step (str): The current project step or phase, used for constructing the checkpoint file path.
+        adversarial (bool): Whether to use adversarial training.
         model (torch.nn.Module): The main model to load the state dictionary into.
         model_D (torch.nn.Module): The auxiliary or discriminator model to load the state dictionary into.
         optimizer (torch.optim.Optimizer): The optimizer for the main model to load the state dictionary into.
@@ -172,9 +189,10 @@ def load_checkpoint(checkpoint_root: str,
         
         # Load the state dictionaries into the model, auxiliary model, and optimizers
         model.load_state_dict(checkpoint['model'])
-        model_D.load_state_dict(checkpoint['model_D'])
         optimizer.load_state_dict(checkpoint['optimizer'])
-        optimizer_D.load_state_dict(checkpoint['optimizer_D'])
+        if adversarial:
+            model_D.load_state_dict(checkpoint['model_D'])
+            optimizer_D.load_state_dict(checkpoint['optimizer_D'])
         
         # Extract training state information
         start_epoch = checkpoint['epoch']

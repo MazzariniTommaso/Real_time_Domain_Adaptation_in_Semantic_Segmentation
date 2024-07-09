@@ -58,16 +58,14 @@ class GTA5(Dataset):
         Returns:
             np.ndarray: The label image.
         """
-        gray_image = Image.new('L', image.size)
-        rgb_pixels = image.load()
-        gray_pixels = gray_image.load()
+        image_np = np.array(image)
+        label = np.zeros((image_np.shape[0], image_np.shape[1]), dtype=np.uint8)
         
-        for i in range(image.width):
-            for j in range(image.height):
-                rgb = rgb_pixels[i,j]
-                gray_pixels[i,j] = self.color_to_id.get(rgb,255)
-                
-        return gray_image
+        for color, class_id in self.color_to_id.items():
+            mask = np.all(image_np == color, axis=-1)
+            label[mask] = class_id
+    
+        return label
         
     def __len__(self)->int: 
         """
