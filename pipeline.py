@@ -177,7 +177,7 @@ def adversarial_train_step(model: torch.nn.Module,
                            loss_D: torch.nn.Module, 
                            optimizer: torch.optim.Optimizer, 
                            optimizer_D: torch.optim.Optimizer, 
-                           loaders: Tuple[DataLoader,DataLoader], 
+                           dataloaders: Tuple[DataLoader,DataLoader], 
                            device: str, 
                            n_classes: int = 19)-> Tuple[float, float, float]:
     """
@@ -190,7 +190,7 @@ def adversarial_train_step(model: torch.nn.Module,
     - loss_D (torch.nn.Module): Adversarial loss function for discriminator.
     - optimizer (torch.optim.Optimizer): Optimizer for segmentation model.
     - optimizer_D (torch.optim.Optimizer): Optimizer for discriminator model.
-    - loaders (Tuple[DataLoader,DataLoader]): Source and target dataloaders for training data.
+    - dataloaders (Tuple[DataLoader,DataLoader]): Source and target dataloaders for training data.
     - device (str): Device on which to run the models ('cuda' or 'cpu').
     - n_classes (int, optional): Number of classes for segmentation. Default is 19.
 
@@ -219,7 +219,7 @@ def adversarial_train_step(model: torch.nn.Module,
     model_G.train()
     model_D.train()
     
-    source_loader, target_loader = loaders
+    source_loader, target_loader = dataloaders
     train_loader = zip(source_loader, cycle(target_loader))
     
     
@@ -469,21 +469,21 @@ def train(model: torch.nn.Module,
                                                                        loss_D=loss_D, 
                                                                        optimizer=optimizer, 
                                                                        optimizer_D=optimizer_D, 
-                                                                       loaders=train_loader, 
+                                                                       dataloaders=train_loader, 
                                                                        device=device, 
                                                                        n_classes=n_classes)
         else:
             train_loss, train_miou, train_iou = train_step(model=model, 
                                                            loss_fn=loss_fn, 
                                                            optimizer=optimizer, 
-                                                           train_loader=train_loader, 
+                                                           dataloader=train_loader, 
                                                            device=device, 
                                                            n_classes=n_classes)
         
         # Perform validation step
         val_loss, val_miou, val_iou = val_step(model=model, 
                                                loss_fn=loss_fn, 
-                                               val_loader=val_loader,
+                                               dataloader=val_loader,
                                                device=device, 
                                                n_classes=n_classes)
         
