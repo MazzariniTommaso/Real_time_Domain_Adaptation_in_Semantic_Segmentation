@@ -251,7 +251,7 @@ def adversarial_train_step(model: torch.nn.Module,
         
         prediction_target = torch.nn.functional.softmax(output_target)
         discriminator_output_target = model_D(prediction_target)
-        discriminator_label_source = torch.FloatTensor(discriminator_output_target.data.size()).fill_(0).cuda()
+        discriminator_label_source = torch.FloatTensor(discriminator_output_target.data.size()).fill_(0).cuda() # 0 = source domain
         
         adversarial_loss = bce_loss(discriminator_output_target, discriminator_label_source)
         discriminator_loss = lambda_adv * adversarial_loss
@@ -268,7 +268,7 @@ def adversarial_train_step(model: torch.nn.Module,
         
         prediction_source = torch.nn.functional.softmax(output_source)
         discriminator_output_source = model_D(prediction_source)
-        discriminator_label_source = torch.FloatTensor(discriminator_output_source.data.size()).fill_(0).cuda()
+        discriminator_label_source = torch.FloatTensor(discriminator_output_source.data.size()).fill_(0).cuda() # 0 = source domain
         discriminator_loss_source = bce_loss(discriminator_output_source, discriminator_label_source)
         discriminator_loss_source.backward()
 
@@ -277,7 +277,7 @@ def adversarial_train_step(model: torch.nn.Module,
         
         prediction_target = torch.nn.functional.softmax(output_target)
         discriminator_output_target = model_D(prediction_target)
-        discriminator_label_target = torch.FloatTensor(discriminator_output_target.data.size()).fill_(1).cuda()
+        discriminator_label_target = torch.FloatTensor(discriminator_output_target.data.size()).fill_(1).cuda() # 1 = target domain
         
         discriminator_loss_target = bce_loss(discriminator_output_target, discriminator_label_target)
         discriminator_loss_target.backward()
