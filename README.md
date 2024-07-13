@@ -1,64 +1,25 @@
-## Model initialization
+# Real-time Domain Adaptation in Semantic Segmentation
 
-In the following link you can find the pretrained weights for DeepLab.
+## Authors
+- Tommaso Mazzarini (Politecnico di Torino) - tommaso.mazzarini@studenti.polito.it
+- Leonardo Merelli (Politecnico di Torino) - leonardo.merelli@studenti.polito.it
+- Giovanni Stinà (Politecnico di Torino) - giovanni.stina@studenti.polito.it
 
-**DeepLab petrained weights**: https://drive.google.com/file/d/1ZX0UCXvJwqd2uBGCX7LI2n-DfMg3t74v/view?usp=sharing
+## Abstract
+This work focuses on domain adaptation techniques to enhance the accuracy of real-time neural networks for semantic segmentation, particularly in transitioning from synthetic to real-world environments. Classical (DeepLabV2) and real-time (BiSeNet) segmentation networks are trained and evaluated on the Cityscapes dataset. Techniques such as data augmentation and adversarial learning are applied to address the domain shift problem.
 
+## Introduction
+Semantic segmentation is critical in computer vision, requiring accurate pixel-wise classification for applications like autonomous driving. Real-time networks must balance accuracy and efficiency, often challenged by the scarcity of labeled real-world data. This study investigates domain adaptation to improve model performance when shifting from synthetic to real-world data.
 
-## Datasets
+## Methods
+- **DeepLabV2**: A classical semantic segmentation network.
+- **BiSeNet**: A real-time segmentation network.
+- **Domain Adaptation Techniques**: Include data augmentation and adversarial learning to mitigate the domain shift from synthetic (GTA5) to real-world (Cityscapes) datasets.
 
-To download the dataset use the following download links.
+## Results
+- **Baseline Performance**: Without adaptation, BiSeNet shows significant performance drops when trained on synthetic data and tested on real-world data.
+- **Data Augmentation**: Improved mIoU from 20.61% to 27.43%.
+- **Adversarial Learning**: Further increased mIoU to 30.44%.
 
-**Cityscapes**: https://drive.google.com/file/d/1Qb4UrNsjvlU-wEsR9d7rckB0YS_LXgb2/view?usp=sharing
-
-**GTA5**: https://drive.google.com/file/d/1xYxlcMR2WFCpayNrW2-Rb7N-950vvl23/view?usp=sharing
-
-## GTA5: label color mapping
-
-Plese refer to this link to convert GTA5 labels in the same format of Cityscapes: https://github.com/sarrrrry/PyTorchDL_GTA5/blob/master/pytorchdl_gta5/labels.py
-
-## FLOPs and parameters
-
-First install fvcore with this command:
-```bash
-!pip install -U fvcore
-```
-
-To calculate the FLOPs and number of parameters please use this code:
-```python
-from fvcore.nn import FlopCountAnalysis, flop_count_table
-
-# -----------------------------
-# Initizialize your model here
-# -----------------------------
-
-height = ...
-width = ...
-image = torch.zeros((3, height, width))
-
-flops = FlopCountAnalysis(model, image)
-print(flop_count_table(flops))
-```
-Reference: https://github.com/facebookresearch/fvcore/blob/main/docs/flop_count.md
-
-## Latency and FPS
-
-Please refer to this pseudo-code for latency and FPS calculation.
-
-> $\texttt{image} \gets \texttt{random(3, height, width)}$\
-$\texttt{iterations} \gets 1000$\
-$\texttt{latency} \gets \texttt{[]}$\
-$\texttt{FPS} \gets \texttt{[]}$ \
-repeat $\texttt{iterations}$ times \
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $\texttt{start = time.time()}$\
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $\texttt{output = model(image)}$\
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $\texttt{end = time.time()}$\
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $\texttt{latency}_i \texttt{ = end - start} $\
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $\texttt{latency.append(latency}_i \texttt{}) $\
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $\texttt{FPS}_i = \frac{\texttt{1}}{\texttt{latency}_i}$\
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $\texttt{FPS.append(FPS}_i \texttt{})$    
-end      
-> $\texttt{meanLatency}  \gets \texttt{mean(latency)*1000}$\
-$\texttt{stdLatency} \gets \texttt{std(latency)*1000}$\
-$\texttt{meanFPS} \gets \texttt{mean(FPS)}$\
-$\texttt{stdFPS} \gets \texttt{std(FPS)}$
+## Conclusion
+Domain adaptation techniques significantly improve the performance of real-time semantic segmentation models in real-world applications. While notable advancements were achieved, further research is needed to bridge the performance gap entirely.
