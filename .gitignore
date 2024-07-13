@@ -1,4 +1,6 @@
-data
+data/Cityscapes
+data/GTA5
+data/GTA5_with_mask
 models/deeplab_resnet_pretrained_imagenet.pth
 checkpoints
 notebooks
