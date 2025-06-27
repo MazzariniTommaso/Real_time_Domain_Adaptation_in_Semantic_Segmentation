@@ -4,6 +4,10 @@
 
 This project investigates **domain adaptation** techniques to improve the performance of **real-time semantic segmentation models** when transferring from synthetic datasets (GTA5) to real-world data (Cityscapes). We focus on comparing a classical architecture (**DeepLabV2**) and a real-time network (**BiSeNet**), applying **data augmentation** and **adversarial learning** to mitigate domain shift.
 
+For more details, see the paper:  
+[Real-Time Domain Adaptation for Semantic Segmentation](./Real-time_Domain_Adaptation_in_Semantic_Segmentation.pdf)
+
+
 ---
 
 ## 📚 Contents
